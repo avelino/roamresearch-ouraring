@@ -134,7 +134,10 @@ export function formatDisplayDate(value: string | null | undefined): string {
   if (!value) {
     return "";
   }
-  const parsed = new Date(value);
+  // For ISO date-only strings (YYYY-MM-DD), append T00:00:00 to interpret as local time
+  // Without this, JavaScript interprets as UTC which shifts the date in non-UTC timezones
+  const dateValue = ISO_DATE_PATTERN.test(value) ? `${value}T00:00:00` : value;
+  const parsed = new Date(dateValue);
   if (Number.isNaN(parsed.getTime())) {
     return "";
   }
