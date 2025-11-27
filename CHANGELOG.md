@@ -1,3 +1,10 @@
+# 1.0.0 (2025-11-27)
+
+
+### Bug Fixes
+
+* **settings:** increase MUTATION_DELAY_MS from 50ms to 100ms for safer Roam API throttling ([8deed71](https://github.com/avelino/roamresearch-todoist-backup/commit/8deed714b4d1c1ac05e81192e03d6a5ecfcd4349))
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
