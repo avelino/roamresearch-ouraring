@@ -138,6 +138,8 @@ async function createPage(config: { title: string; tree?: InputTextNode[] }): Pr
     await api.createPage({ page: { title: config.title, uid } });
     // Delay after page creation
     await delay(MUTATION_DELAY_MS);
+    // Yield to main thread to keep UI responsive
+    await yieldToMain();
 
     if (config.tree && config.tree.length > 0) {
       for (let i = 0; i < config.tree.length; i++) {
@@ -164,6 +166,8 @@ async function createBlock(config: { parentUid: string; order: number | "last"; 
     });
     // Delay after main block creation
     await delay(MUTATION_DELAY_MS);
+    // Yield to main thread to keep UI responsive
+    await yieldToMain();
 
     if (config.node.children && config.node.children.length > 0) {
       for (let i = 0; i < config.node.children.length; i++) {
@@ -175,7 +179,7 @@ async function createBlock(config: { parentUid: string; order: number | "last"; 
   return uid;
 }
 
-async function createBlockRecursive(parentUid: string, node: InputTextNode, order: number): Promise<void> {
+async function createBlockRecursive(parentUid: string, node: InputTextNode, order: number, depth = 0): Promise<void> {
   const api = getRoamAPI();
   const uid = api?.util?.generateUID?.() ?? generateUID();
 
@@ -187,9 +191,15 @@ async function createBlockRecursive(parentUid: string, node: InputTextNode, orde
     // Delay after each mutation to respect rate limits
     await delay(MUTATION_DELAY_MS);
 
+    // Yield to main thread periodically to keep UI responsive
+    // Yield more frequently at deeper levels to prevent long blocking chains
+    if (depth % YIELD_BATCH_SIZE === 0) {
+      await yieldToMain();
+    }
+
     if (node.children && node.children.length > 0) {
       for (let i = 0; i < node.children.length; i++) {
-        await createBlockRecursive(uid, node.children[i], i);
+        await createBlockRecursive(uid, node.children[i], i, depth + 1);
       }
     }
   }
@@ -228,11 +238,37 @@ export function delay(ms: number): Promise<void> {
 }
 
 /**
+ * Yields control back to the main thread, allowing the browser to process
+ * user input and UI updates. This prevents the sync from blocking typing.
+ *
+ * Uses scheduler.yield() when available (modern browsers), falls back to
+ * a setTimeout(0) trick that still allows the event loop to process.
+ */
+export function yieldToMain(): Promise<void> {
+  // Modern browsers support scheduler.yield() for cooperative scheduling
+  const scheduler = (globalThis as unknown as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  if (scheduler?.yield) {
+    return scheduler.yield();
+  }
+
+  // Fallback: use setTimeout(0) to yield to the event loop
+  // This allows pending user input events to be processed
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
  * Throttle delay between Roam API mutations (in ms).
  * Roam allows 1500 mutations per 60000ms = 25 mutations/second = 40ms between mutations.
  * Using 100ms to be safe and account for recursive block creation overhead.
  */
 export const MUTATION_DELAY_MS = 100;
+
+/**
+ * Number of operations to process before yielding to main thread.
+ * Lower values = more responsive UI but slower sync.
+ * Higher values = faster sync but may cause brief UI stutters.
+ */
+export const YIELD_BATCH_SIZE = 3;
 
 /**
  * Creates a flexible regex for matching setting keys.

@@ -71,6 +71,8 @@ Module Details
 - `readSettings`: Returns `SettingsSnapshot` from panel or page-based config.
 - Settings keys: `todoist_token`, `page_prefix`, `sync_interval_minutes`, `include_comments`, `exclude_title_patterns`, `enable_debug_logs`, `status_alias_*`.
 - `MUTATION_DELAY_MS`: 100ms throttle between Roam mutations (respects 1500/60s rate limit with safety margin).
+- `yieldToMain()`: Yields control back to browser main thread during sync operations, preventing UI blocking. Uses `scheduler.yield()` when available, falls back to `setTimeout(0)`.
+- `YIELD_BATCH_SIZE`: Number of operations (default: 3) to process before yielding to main thread for UI responsiveness.
 
 ### scheduler.ts
 
@@ -116,7 +118,7 @@ Quality Gates Before Submitting Changes
 Development Conventions
 
 - Avoid new global state beyond existing module-level flags (`syncInProgress`, timer handles). Prefer closures or module-scoped constants.
-- Background syncs must not interrupt the user: do not steal focus or scroll position in Roam.
+- Background syncs must not interrupt the user: do not steal focus or scroll position in Roam. Use `yieldToMain()` in loops to prevent blocking typing.
 - Use template literals only when interpolation is required; keep strings ASCII.
 - Keep network utilities reusable; new Todoist helpers belong in `todoist.ts` and should respect shared pagination behaviour.
 - When updating blocks ensure `todoist-id::` remains the canonical identifier; preserve completed tasks (`todoist-status:: ✅`) even when Todoist stops returning them.
@@ -154,10 +156,12 @@ Error Handling & Logging
 Performance & Scheduling
 
 - `scheduleAutoSync` must remain idempotent; cancel existing timers before scheduling new ones.
-- Avoid blocking the UI thread; fetch Todoist resources in parallel (`Promise.all`) and keep DOM updates minimal.
+- **Never block the UI thread**: use `yieldToMain()` periodically during sync operations to allow user input and UI updates. The sync should be invisible to the user - they must be able to type without interruption.
+- Fetch Todoist resources in parallel (`Promise.all`) and keep DOM updates minimal.
 - Work on cloned task arrays (`[...tasks]`) to avoid mutating caller-owned data.
 - Avoid creating persistent placeholders; if `No tasks found.` blocks remain from previous versions, remove them during sync.
-- Respect Roam mutation rate limit: use `MUTATION_DELAY_MS` (100ms) between API calls. Mutation functions (`createBlock`, `createPage`) include their own delays, so callers should not add extra delays after calling them.
+- Respect Roam mutation rate limit: use `MUTATION_DELAY_MS` (100ms) between API calls. Mutation functions (`createBlock`, `createPage`) include their own delays and yields, so callers should not add extra delays after calling them.
+- Use `YIELD_BATCH_SIZE` to control how many operations run before yielding. Lower values = more responsive UI; higher values = faster sync.
 
 Security & Privacy
 

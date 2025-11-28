@@ -7,7 +7,9 @@ import {
   updateBlock,
   deleteBlock,
   delay,
+  yieldToMain,
   MUTATION_DELAY_MS,
+  YIELD_BATCH_SIZE,
   type RoamBasicNode,
   type InputTextNode,
 } from "./settings";
@@ -91,9 +93,16 @@ export async function writeBlocks(
     tasksByPage.get(pageName)!.push({ task, block });
   }
 
+  let pageCount = 0;
   for (const [pageName, tasksWithBlocks] of tasksByPage.entries()) {
     const blocks = tasksWithBlocks.map((t) => t.block);
     await writeBlocksToPage(pageName, blocks);
+
+    // Yield to main thread periodically to keep UI responsive
+    pageCount++;
+    if (pageCount % YIELD_BATCH_SIZE === 0) {
+      await yieldToMain();
+    }
   }
 
   await cleanupObsoletePages(pagePrefix, tasksByPage);
@@ -125,6 +134,7 @@ async function writeBlocksToPage(pageName: string, blocks: BlockPayload[]) {
   });
 
   const seenIds = new Set<string>();
+  let blockCount = 0;
   for (const block of blocks) {
     // Extract todoist-id from child blocks (new structure) or main text (legacy)
     const todoistId = extractTodoistIdFromBlock(block);
@@ -152,6 +162,12 @@ async function writeBlocksToPage(pageName: string, blocks: BlockPayload[]) {
         node: toInputNode(block),
       });
     }
+
+    // Yield to main thread periodically to keep UI responsive
+    blockCount++;
+    if (blockCount % YIELD_BATCH_SIZE === 0) {
+      await yieldToMain();
+    }
   }
 
   await removeObsoleteBlocks(blockMap, seenIds);
@@ -169,6 +185,7 @@ async function ensurePage(pageName: string): Promise<string> {
 }
 
 async function removeObsoleteBlocks(blockMap: Map<string, RoamBasicNode>, seenIds: Set<string>) {
+  let removeCount = 0;
   for (const [todoistId, node] of blockMap.entries()) {
     if (seenIds.has(todoistId)) {
       continue;
@@ -183,6 +200,12 @@ async function removeObsoleteBlocks(blockMap: Map<string, RoamBasicNode>, seenId
     }
     await deleteBlock(node.uid);
     await delay(MUTATION_DELAY_MS);
+
+    // Yield to main thread periodically to keep UI responsive
+    removeCount++;
+    if (removeCount % YIELD_BATCH_SIZE === 0) {
+      await yieldToMain();
+    }
   }
 }
 
@@ -220,6 +243,7 @@ async function syncChildren(parentUid: string, newChildren: BlockPayload[]) {
   }
 
   // Process new children
+  let childCount = 0;
   for (const newChild of newChildren) {
     const propKey = extractPropertyKey(newChild.text);
 
@@ -256,6 +280,12 @@ async function syncChildren(parentUid: string, newChildren: BlockPayload[]) {
         node: toInputNode(newChild),
       });
     }
+
+    // Yield to main thread periodically to keep UI responsive
+    childCount++;
+    if (childCount % YIELD_BATCH_SIZE === 0) {
+      await yieldToMain();
+    }
   }
 }
 
@@ -289,6 +319,7 @@ async function cleanupObsoletePages(
 
   const prefix = `${pagePrefix}/`;
   const pageTitles = getPageTitlesStartingWithPrefix(prefix);
+  let cleanupCount = 0;
   for (const pageTitle of pageTitles) {
     if (currentTasksByPage.has(pageTitle)) {
       continue;
@@ -314,9 +345,18 @@ async function cleanupObsoletePages(
       }
       await deleteBlock(node.uid);
       await delay(MUTATION_DELAY_MS);
+
+      // Yield to main thread periodically to keep UI responsive
+      cleanupCount++;
+      if (cleanupCount % YIELD_BATCH_SIZE === 0) {
+        await yieldToMain();
+      }
     }
 
     await updatePlaceholderState(pageUid);
+
+    // Yield after processing each page
+    await yieldToMain();
   }
 }
 

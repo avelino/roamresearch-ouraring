@@ -1,17 +1,3 @@
-## [1.0.1](https://github.com/avelino/roamresearch-todoist-backup/compare/v1.0.0...v1.0.1) (2025-11-27)
-
-
-### Bug Fixes
-
-* interpret ISO date-only (YYYY-MM-DD) values as local time in formatDisplayDate ([1005f9c](https://github.com/avelino/roamresearch-todoist-backup/commit/1005f9ce1f148e5c7483149227057fd797e60352))
-
-# 1.0.0 (2025-11-27)
-
-
-### Bug Fixes
-
-* **settings:** increase MUTATION_DELAY_MS from 50ms to 100ms for safer Roam API throttling ([8deed71](https://github.com/avelino/roamresearch-todoist-backup/commit/8deed714b4d1c1ac05e81192e03d6a5ecfcd4349))
-
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -23,39 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Rate limit exceeded error during sync with many tasks - increased mutation delay from 50ms to 100ms and added proper delays in recursive block creation
-- Tasks dated "today" being recorded as yesterday due to timezone handling - ISO dates (YYYY-MM-DD) are now interpreted as local time instead of UTC
+* **Sync blocking typing in Roam** - implemented cooperative scheduling with `yieldToMain()` that periodically yields control back to the browser during sync operations, allowing users to continue typing without interruption
+* Rate limit exceeded error during sync with many tasks - increased mutation delay from 50ms to 100ms and added proper delays in recursive block creation
+* Tasks dated "today" being recorded as yesterday due to timezone handling - ISO dates (YYYY-MM-DD) are now interpreted as local time instead of UTC
 
 ## [0.1.0] - 2025-11-27
 
 ### Added
 
-- Initial release of Roam Todoist Backup extension
-- Sync active and completed tasks from Todoist to Roam Research
-- Dedicated page per task: `{pagePrefix}/{todoist-id}`
-- Task properties stored as child blocks (id, due, status, labels, description)
-- Optional comment sync with nested block structure
-- Automatic sync scheduling with configurable interval
-- Manual sync via command palette ("Todoist: Sync backup") and topbar button
-- Title exclusion patterns (regex) to skip specific tasks
-- Customizable status aliases (◼️ active, ✅ completed, ❌ deleted)
-- Development mode with mock data when debug logs enabled
-- Settings panel integration via Roam Depot
-- Fallback config page (`roam/js/todoist-backup`) for legacy support
-- Date formatting following Roam daily note pattern (`MMMM Do, YYYY`)
-- Inline Todoist label conversion (`@label` → `#label`)
-- Preserve completed tasks history during sync
-- Respect Roam API rate limits (50ms mutation delay)
+* Initial release of Roam Todoist Backup extension
+* Sync active and completed tasks from Todoist to Roam Research
+* Dedicated page per task: `{pagePrefix}/{todoist-id}`
+* Task properties stored as child blocks (id, due, status, labels, description)
+* Optional comment sync with nested block structure
+* Automatic sync scheduling with configurable interval
+* Manual sync via command palette ("Todoist: Sync backup") and topbar button
+* Title exclusion patterns (regex) to skip specific tasks
+* Customizable status aliases (◼️ active, ✅ completed, ❌ deleted)
+* Development mode with mock data when debug logs enabled
+* Settings panel integration via Roam Depot
+* Fallback config page (`roam/js/todoist-backup`) for legacy support
+* Date formatting following Roam daily note pattern (`MMMM Do, YYYY`)
+* Inline Todoist label conversion (`@label` → `#label`)
+* Preserve completed tasks history during sync
+* Respect Roam API rate limits (50ms mutation delay)
 
 ### Technical
 
-- TypeScript with strict mode
-- Vite bundler producing single `extension.js`
-- ESLint with TypeScript support
-- Modular architecture: `main.ts`, `todoist.ts`, `blocks.ts`, `settings.ts`, `scheduler.ts`, `ui.ts`, `logger.ts`, `constants.ts`
-- Todoist REST API v2 and Sync API v9 integration
-- Cursor-based pagination for REST endpoints
-- Offset-based pagination for Sync API completed items
+* TypeScript with strict mode
+* Vite bundler producing single `extension.js`
+* ESLint with TypeScript support
+* Modular architecture: `main.ts`, `todoist.ts`, `blocks.ts`, `settings.ts`, `scheduler.ts`, `ui.ts`, `logger.ts`, `constants.ts`
+* Todoist REST API v2 and Sync API v9 integration
+* Cursor-based pagination for REST endpoints
+* Offset-based pagination for Sync API completed items
 
 [Unreleased]: https://github.com/avelino/roamresearch-todoist-backup/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/avelino/roamresearch-todoist-backup/releases/tag/v0.1.0
