@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/avelino/roamresearch-todoist-backup/compare/v1.0.1...v1.0.2) (2025-11-28)
+
+
+### Bug Fixes
+
+* prevent sync from blocking typing in Roam by yielding to browser main thread during block creation ([5314769](https://github.com/avelino/roamresearch-todoist-backup/commit/5314769b12e37677f724e6a2de6d50edbcb0fadd))
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
