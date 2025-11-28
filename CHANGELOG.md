@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+* **Person page links** - Todoist labels starting with `@` (e.g., `@Pato`) are now converted to Roam wiki links (e.g., `[[@Pato]]`) for linking to person pages; inline `@@name` in task titles also converts to wiki links
+* **Hierarchical label links** - Todoist labels containing `/` (e.g., `buser/team/bx`) are now converted to Roam wiki links (e.g., `[[buser/team/bx]]`) preserving namespace hierarchy
+
 ### Fixed
 
 * **Sync blocking typing in Roam** - implemented cooperative scheduling with `yieldToMain()` that periodically yields control back to the browser during sync operations, allowing users to continue typing without interruption

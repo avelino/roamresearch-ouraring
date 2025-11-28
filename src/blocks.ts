@@ -453,10 +453,7 @@ export function buildPropertyBlocks(
   }
 
   const labelsProperty = labels
-    .map((label) => {
-      const tag = formatLabelTag(label);
-      return tag.startsWith("#") ? tag : `#${tag}`;
-    })
+    .map((label) => formatLabelTag(label))
     .filter((value) => value.length > 0)
     .join(" ");
 

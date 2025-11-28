@@ -51,7 +51,7 @@ Module Details
 - `fetchCompletedTasks`: Offset-based pagination for Sync API completed items.
 - `fetchTaskComments`: Retrieves comments per task with retry logic.
 - `mergeBackupTasks`: Combines active and completed tasks into unified list.
-- Text sanitization: `safeText`, `safeLinkText`, `formatLabelTag`, `convertInlineTodoistLabels`.
+- Text sanitization: `safeText`, `safeLinkText`, `formatLabelTag` (converts `@name` labels to `[[@name]]` wiki links, labels with `/` to `[[label]]` wiki links), `convertInlineTodoistLabels` (converts `@@name` to `[[@name]]` and `@label` to `#label`).
 - Date formatting: `formatDue`, `formatDisplayDate` producing Roam-style dates (`MMMM Do, YYYY`).
 - Mock generators: `generateMockTasks`, `generateMockCompletedTasks`, `generateMockProjects`, `generateMockLabels`.
 
@@ -104,7 +104,7 @@ TypeScript & Validation Expectations
 - Validate all external inputs aggressively:
   - Todoist responses: guard optional fields, normalize IDs to strings, validate dates against `ISO_DATE_PATTERN`, handle pagination (cursor for REST, offset for Sync) defensively.
   - Roam settings: trim strings, coerce numbers, clamp intervals (`>= 1 minute`); reuse `readSettings` to obtain sanitized snapshots.
-- Sanitize user-provided text via existing helpers (`safeText`, `safeLinkText`, `formatLabelTag`, `convertInlineTodoistLabels`) before inserting into Roam blocks. `safeLinkText` preserves Roam wiki links / Markdown links; `convertInlineTodoistLabels` transforms Todoist `@label` into Roam hashtags while respecting email addresses and wiki links.
+- Sanitize user-provided text via existing helpers (`safeText`, `safeLinkText`, `formatLabelTag`, `convertInlineTodoistLabels`) before inserting into Roam blocks. `safeLinkText` preserves Roam wiki links / Markdown links; `convertInlineTodoistLabels` transforms Todoist `@@name` into person page links (`[[@name]]`) and `@label` into Roam hashtags while respecting email addresses and wiki links; `formatLabelTag` converts labels starting with `@` to wiki links for person pages and labels containing `/` to wiki links for hierarchical namespaces.
 - Prefer `unknown` over `any` for new external payloads; narrow via type guards or validators.
 - Handle async errors with try/catch; display actionable messages via `showStatusMessage` and log details with `logError`.
 

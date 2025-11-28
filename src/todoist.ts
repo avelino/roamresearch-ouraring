@@ -573,8 +573,25 @@ export function safeLinkText(value: string | null | undefined) {
 
 /**
  * Normalizes label names into Roam-friendly tags.
+ * - Labels starting with @ become wiki links for person pages (e.g., @Pato -> [[@Pato]]).
+ * - Labels containing / become wiki links preserving hierarchy (e.g., buser/team/bx -> [[buser/team/bx]]).
+ * - Regular labels become hashtags (e.g., work -> #work).
  */
 export function formatLabelTag(label: string) {
+  // Labels starting with @ become wiki links (person page references)
+  if (label.startsWith("@")) {
+    const name = label.slice(1).trim();
+    if (!name) return "";
+    return `[[@${name}]]`;
+  }
+
+  // Labels containing / become wiki links (hierarchical namespaces)
+  if (label.includes("/")) {
+    const trimmed = label.trim();
+    if (!trimmed) return "";
+    return `[[${trimmed}]]`;
+  }
+
   const sanitized = label.replace(/[^\w\s-]/g, " ").trim();
   if (!sanitized) return "";
   const dashed = sanitized.replace(/\s+/g, "-");
@@ -582,7 +599,9 @@ export function formatLabelTag(label: string) {
 }
 
 /**
- * Converts Todoist inline labels (@label) to Roam hashtags (#label).
+ * Converts Todoist inline labels to Roam format.
+ * - @@name becomes [[@name]] (person page links)
+ * - @label becomes #label (hashtags)
  * Preserves email addresses and other @ mentions that are not labels.
  * Skips conversion inside Roam page links ([[...]]).
  *
@@ -592,7 +611,12 @@ export function convertInlineTodoistLabels(text: string): string {
   if (!text) return "";
 
   const convertSegment = (segment: string) =>
-    segment.replace(/(?<![a-zA-Z0-9])@([\w-]+)/g, '#$1');
+    segment
+      // First convert @@name to [[@name]] (person page links)
+      .replace(/(?<![a-zA-Z0-9])@@([\w-]+)/g, "[[@$1]]")
+      // Then convert @label to #label (regular labels)
+      // Note: lookbehind includes [ to avoid converting @name inside [[@name]] wiki links
+      .replace(/(?<![a-zA-Z0-9[])@([\w-]+)/g, "#$1");
 
   let result = "";
   let index = 0;
