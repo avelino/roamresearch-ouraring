@@ -1,4 +1,5 @@
 import { COMMAND_LABEL, TOPBAR_BUTTON_ID, TOPBAR_ICON_NAME } from "./constants";
+import { logInfo, logWarn } from "./logger";
 import type { ExtensionAPI } from "./main";
 
 /**
@@ -30,7 +31,7 @@ export async function registerCommand(
   const extensionCommandPalette = extensionAPI.ui?.commandPalette;
   if (extensionCommandPalette?.addCommand && extensionCommandPalette?.removeCommand) {
     await extensionCommandPalette.addCommand(command);
-    console.info("[ouraring] command registered via extensionAPI.ui.commandPalette");
+    logInfo("command registered via extensionAPI.ui.commandPalette");
 
     return async () => {
       await extensionCommandPalette.removeCommand({ label: COMMAND_LABEL });
@@ -41,13 +42,13 @@ export async function registerCommand(
   const legacyCommandPalette = roamAPI?.ui?.commandPalette;
   if (legacyCommandPalette?.addCommand && legacyCommandPalette?.removeCommand) {
     await legacyCommandPalette.addCommand(command);
-    console.info("[ouraring] command registered via window.roamAlphaAPI.ui.commandPalette");
+    logInfo("command registered via window.roamAlphaAPI.ui.commandPalette");
 
     return async () => {
       await legacyCommandPalette.removeCommand({ label: COMMAND_LABEL });
     };
   }
-  console.warn("[ouraring] command palette API not available");
+  logWarn("command palette API not available");
 
   return async () => undefined;
 }

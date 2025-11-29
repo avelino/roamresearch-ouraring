@@ -177,7 +177,8 @@ function formatWorkoutLine(workout: OuraWorkout): string {
   const parts: string[] = [];
   if (duration) parts.push(duration);
   if (workout.calories !== undefined) parts.push(`${workout.calories} kcal`);
-  if (workout.distance !== undefined) parts.push(`${workout.distance} km`);
+  const distance = formatDistance(workout.distance);
+  if (distance) parts.push(distance);
   if (workout.intensity) parts.push(workout.intensity);
   const activity = workout.sport ?? "Workout";
   const details = parts.length > 0 ? ` (${parts.join(", ")})` : "";

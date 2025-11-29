@@ -22,6 +22,7 @@ Open `Roam Depot → Extension Settings → Oura Ring` and configure:
 - **Page Prefix** – prefix used in page names (default `ouraring`).
 - **Days to Sync** – how many past days to fetch (includes today).
 - **Enable Debug Logs** – show extra logs in the browser console.
+- **CORS Proxy URL** – proxy URL to bypass browser CORS restrictions (default `https://corsproxy.io/?`). Leave empty to disable.
 
  If the settings panel is unavailable, the extension creates a fallback page at `roam/js/ouraring` with the same fields.
 
@@ -42,7 +43,7 @@ Open `Roam Depot → Extension Settings → Oura Ring` and configure:
 ## Development
 
 - `pnpm install`
-- `pnpm build` to produce `dist/extension.js` for loading into Roam.
+- `pnpm build` to produce `dist-ouraring/extension.js` for loading into Roam.
 - Source entry point: `src/main.ts`.
 
 Contributions are welcome via issues or pull requests.
