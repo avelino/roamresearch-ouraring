@@ -127,7 +127,7 @@ async function syncOura(trigger: "manual" | "auto") {
   try {
     const dates = buildDateRange(settings.daysToSync);
     for (const date of dates) {
-      const data = await fetchDailyData(settings.token, date);
+      const data = await fetchDailyData(settings.token, date, settings.corsProxyUrl);
       await writeDailyOuraPage(settings.pagePrefix, data);
     }
 

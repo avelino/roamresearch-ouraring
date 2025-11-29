@@ -1,9 +1,8 @@
-## [1.0.2](https://github.com/avelino/roamresearch-todoist-backup/compare/v1.0.1...v1.0.2) (2025-11-28)
-
+## [1.0.2](https://github.com/avelino/roamresearch-ouraring/compare/v1.0.1...v1.0.2) (2025-11-28)
 
 ### Bug Fixes
 
-* prevent sync from blocking typing in Roam by yielding to browser main thread during block creation ([5314769](https://github.com/avelino/roamresearch-todoist-backup/commit/5314769b12e37677f724e6a2de6d50edbcb0fadd))
+* prevent sync from blocking typing in Roam by yielding to browser main thread during block creation ([5314769](https://github.com/avelino/roamresearch-ouraring/commit/5314769b12e37677f724e6a2de6d50edbcb0fadd))
 
 # Changelog
 
@@ -17,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 * Oura Ring sync that creates `ouraring/YYYY-MM-DD` pages with `Sleep`, `Readiness`, `Activity`, `Heart rate`, and `Workouts` sections populated from the Oura Cloud API.
+* CORS proxy support via `cors_proxy_url` setting to bypass browser CORS restrictions when calling Oura API. Default uses `corsproxy.io`.
 
 ### Changed
 
@@ -61,5 +61,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Cursor-based pagination for REST endpoints
 * Offset-based pagination for Sync API completed items
 
-[Unreleased]: https://github.com/avelino/roamresearch-todoist-backup/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/avelino/roamresearch-todoist-backup/releases/tag/v0.1.0
+[Unreleased]: https://github.com/avelino/roamresearch-ouraring/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/avelino/roamresearch-ouraring/releases/tag/v0.1.0

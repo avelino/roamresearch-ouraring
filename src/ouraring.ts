@@ -75,19 +75,26 @@ interface CollectionResponse<T> {
   next_token?: string;
 }
 
-export async function fetchDailyData(token: string, date: string): Promise<DailyOuraData> {
+/**
+ * Fetches all Oura data for a given date (sleep, readiness, activity, workouts, heart rate).
+ * @param token - Oura Personal Access Token
+ * @param date - ISO date string (YYYY-MM-DD)
+ * @param corsProxyUrl - Optional CORS proxy URL prefix (e.g., "https://corsproxy.io/?")
+ */
+export async function fetchDailyData(token: string, date: string, corsProxyUrl?: string): Promise<DailyOuraData> {
   const [sleep, readiness, activity, workouts, heartrate] = await Promise.all([
-    fetchCollection<OuraSleep>("/sleep", { start_date: date, end_date: date }, token),
-    fetchCollection<OuraReadiness>("/readiness", { start_date: date, end_date: date }, token),
-    fetchCollection<OuraActivity>("/daily_activity", { start_date: date, end_date: date }, token),
-    fetchCollection<OuraWorkout>("/workout", { start_date: date, end_date: date }, token),
+    fetchCollection<OuraSleep>("/daily_sleep", { start_date: date, end_date: date }, token, corsProxyUrl),
+    fetchCollection<OuraReadiness>("/daily_readiness", { start_date: date, end_date: date }, token, corsProxyUrl),
+    fetchCollection<OuraActivity>("/daily_activity", { start_date: date, end_date: date }, token, corsProxyUrl),
+    fetchCollection<OuraWorkout>("/workout", { start_date: date, end_date: date }, token, corsProxyUrl),
     fetchCollection<OuraHeartRateSample>(
       "/heartrate",
       {
         start_datetime: `${date}T00:00:00Z`,
         end_datetime: `${date}T23:59:59Z`,
       },
-      token
+      token,
+      corsProxyUrl
     ),
   ]);
 
@@ -103,7 +110,30 @@ export async function fetchDailyData(token: string, date: string): Promise<Daily
   return { date, sleep, readiness, activity, heartrate, workouts };
 }
 
-async function fetchCollection<T>(path: string, params: Record<string, string>, token: string): Promise<T[]> {
+/**
+ * Builds the final URL, optionally wrapping with CORS proxy.
+ * @param baseUrl - The original API URL
+ * @param corsProxyUrl - Optional CORS proxy prefix (e.g., "https://corsproxy.io/?")
+ *
+ * Proxy URL formats supported:
+ * - "https://corsproxy.io/?" → appends URL directly (no encoding)
+ * - "https://api.allorigins.win/raw?url=" → appends URL encoded
+ */
+function buildProxiedUrl(baseUrl: string, corsProxyUrl?: string): string {
+  if (!corsProxyUrl || corsProxyUrl.trim() === "") {
+    return baseUrl;
+  }
+  // Proxies ending with "?url=" expect encoded URL, others expect raw URL
+  const needsEncoding = corsProxyUrl.includes("?url=");
+  return `${corsProxyUrl}${needsEncoding ? encodeURIComponent(baseUrl) : baseUrl}`;
+}
+
+async function fetchCollection<T>(
+  path: string,
+  params: Record<string, string>,
+  token: string,
+  corsProxyUrl?: string
+): Promise<T[]> {
   const allItems: T[] = [];
   let nextToken: string | undefined;
 
@@ -112,7 +142,11 @@ async function fetchCollection<T>(path: string, params: Record<string, string>, 
     if (nextToken) {
       searchParams.set("next_token", nextToken);
     }
-    const url = `${OURA_API_BASE}${path}?${searchParams.toString()}`;
+    const originalUrl = `${OURA_API_BASE}${path}?${searchParams.toString()}`;
+    const url = buildProxiedUrl(originalUrl, corsProxyUrl);
+
+    logDebug("fetch_request", { originalUrl, proxied: url !== originalUrl });
+
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -121,7 +155,7 @@ async function fetchCollection<T>(path: string, params: Record<string, string>, 
 
     if (!response.ok) {
       const body = await response.text();
-      logError("oura_api_error", { url, status: response.status, body });
+      logError("oura_api_error", { url: originalUrl, status: response.status, body });
       throw new Error(`Oura API request failed (${response.status})`);
     }
 

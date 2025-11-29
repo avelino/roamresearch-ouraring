@@ -8,14 +8,14 @@ export default defineConfig({
     global: "window",
   },
   build: {
-    outDir: "dist",
+    outDir: "dist-ouraring",
     target: "esnext",
     minify: "esbuild",
     sourcemap: true,
     emptyOutDir: true,
     lib: {
       entry: resolve(__dirname, "src/main.ts"),
-      name: "RoamTodoistBackup",
+      name: "RoamOuraRing",
       formats: ["es"],
       fileName: () => "extension.js",
     },

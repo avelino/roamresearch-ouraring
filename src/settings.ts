@@ -1,7 +1,7 @@
 // Use React from window to avoid version conflicts with Roam's React
 const getReact = () => (window as unknown as { React: typeof import("react") }).React;
 
-import { CONFIG_PAGE_TITLE, DEFAULT_PAGE_PREFIX } from "./constants";
+import { CONFIG_PAGE_TITLE, DEFAULT_PAGE_PREFIX, DEFAULT_CORS_PROXY } from "./constants";
 import type { ExtensionAPI } from "./main";
 
 interface RoamBasicNode {
@@ -147,6 +147,7 @@ export type SettingsSnapshot = {
   pagePrefix: string;
   daysToSync: number;
   enableDebugLogs: boolean;
+  corsProxyUrl: string;
 };
 
 export type SettingsHandle =
@@ -158,6 +159,7 @@ const SETTINGS_KEYS = {
   pagePrefix: "page_prefix",
   daysToSync: "days_to_sync",
   enableDebugLogs: "enable_debug_logs",
+  corsProxyUrl: "cors_proxy_url",
 } as const;
 
 const DEFAULT_SETTINGS: Record<string, unknown> = {
@@ -165,6 +167,7 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
   [SETTINGS_KEYS.pagePrefix]: DEFAULT_PAGE_PREFIX,
   [SETTINGS_KEYS.daysToSync]: 7,
   [SETTINGS_KEYS.enableDebugLogs]: false,
+  [SETTINGS_KEYS.corsProxyUrl]: DEFAULT_CORS_PROXY,
 };
 
 const SETTINGS_TEMPLATE: InputTextNode[] = [
@@ -172,6 +175,7 @@ const SETTINGS_TEMPLATE: InputTextNode[] = [
   { text: "Page Prefix", children: [{ text: DEFAULT_PAGE_PREFIX }] },
   { text: "Days to Sync", children: [{ text: "7" }] },
   { text: "Enable Debug Logs" },
+  { text: "CORS Proxy URL", children: [{ text: DEFAULT_CORS_PROXY }] },
 ];
 
 export async function initializeSettings(extensionAPI: ExtensionAPI): Promise<SettingsHandle> {
@@ -199,11 +203,13 @@ function readSettingsFromPanel(extensionAPI: ExtensionAPI): SettingsSnapshot {
   const pagePrefix = getString(allSettings, SETTINGS_KEYS.pagePrefix) || DEFAULT_PAGE_PREFIX;
   const daysToSync = Math.max(getNumber(allSettings, SETTINGS_KEYS.daysToSync, 7), 1);
   const enableDebugLogs = getBoolean(allSettings, SETTINGS_KEYS.enableDebugLogs, false);
+  const corsProxyUrl = getString(allSettings, SETTINGS_KEYS.corsProxyUrl) || DEFAULT_CORS_PROXY;
   return {
     token,
     pagePrefix,
     daysToSync,
     enableDebugLogs,
+    corsProxyUrl,
   };
 }
 
@@ -219,12 +225,15 @@ function readSettingsFromPage(pageUid: string): SettingsSnapshot {
     1
   );
   const enableDebugLogs = hasFlag(tree, "Enable Debug Logs");
+  const corsProxyUrl =
+    getSettingValueFromTree({ tree, key: "CORS Proxy URL", defaultValue: DEFAULT_CORS_PROXY }).trim() || DEFAULT_CORS_PROXY;
 
   return {
     token,
     pagePrefix,
     daysToSync,
     enableDebugLogs,
+    corsProxyUrl,
   };
 }
 
@@ -376,6 +385,15 @@ function registerSettingsPanel(extensionAPI: ExtensionAPI): void {
         action: {
           type: "reactComponent",
           component: Toggle(SETTINGS_KEYS.enableDebugLogs),
+        },
+      },
+      {
+        id: SETTINGS_KEYS.corsProxyUrl,
+        name: "CORS Proxy URL",
+        description: "Proxy URL to bypass CORS restrictions. Default: corsproxy.io. Leave empty to disable.",
+        action: {
+          type: "reactComponent",
+          component: TextInput(SETTINGS_KEYS.corsProxyUrl, "text", DEFAULT_CORS_PROXY),
         },
       },
     ],
