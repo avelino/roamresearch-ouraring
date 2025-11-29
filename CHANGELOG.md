@@ -16,14 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-* **Person page links** - Todoist labels starting with `@` (e.g., `@Pato`) are now converted to Roam wiki links (e.g., `[[@Pato]]`) for linking to person pages; inline `@@name` in task titles also converts to wiki links
-* **Hierarchical label links** - Todoist labels containing `/` (e.g., `buser/team/bx`) are now converted to Roam wiki links (e.g., `[[buser/team/bx]]`) preserving namespace hierarchy
+* Oura Ring sync that creates `ouraring/YYYY-MM-DD` pages with `Sleep`, `Readiness`, `Activity`, `Heart rate`, and `Workouts` sections populated from the Oura Cloud API.
+
+### Changed
+
+* Sync now runs on extension load or manual command instead of using a recurring schedule.
 
 ### Fixed
 
-* **Sync blocking typing in Roam** - implemented cooperative scheduling with `yieldToMain()` that periodically yields control back to the browser during sync operations, allowing users to continue typing without interruption
-* Rate limit exceeded error during sync with many tasks - increased mutation delay from 50ms to 100ms and added proper delays in recursive block creation
-* Tasks dated "today" being recorded as yesterday due to timezone handling - ISO dates (YYYY-MM-DD) are now interpreted as local time instead of UTC
+* Improved page rewrite flow to avoid duplicated blocks when refreshing Oura pages.
+
+### Removed
+
+* Todoist-specific sync logic and settings in favor of the dedicated Oura integration.
 
 ## [0.1.0] - 2025-11-27
 
