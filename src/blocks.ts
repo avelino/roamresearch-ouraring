@@ -1,677 +1,228 @@
 import {
+  createBlock,
+  createPage,
+  deleteBlock,
   getBasicTreeByParentUid,
   getPageUidByPageTitle,
-  getPageTitlesStartingWithPrefix,
-  createPage,
-  createBlock,
-  updateBlock,
-  deleteBlock,
-  delay,
-  yieldToMain,
-  MUTATION_DELAY_MS,
-  YIELD_BATCH_SIZE,
-  type RoamBasicNode,
   type InputTextNode,
 } from "./settings";
-
+import { DEFAULT_PAGE_PREFIX, ISO_DATE_PATTERN } from "./constants";
+import { logDebug, logWarn } from "./logger";
 import {
-  PLACEHOLDER_CONTENT,
-  TODOIST_COMMENT_ID_PROPERTY,
-  TODOIST_COMMENTS_PROPERTY,
-  TODOIST_COMMENT_POSTED_PROPERTY,
-  TODOIST_COMPLETED_PROPERTY,
-  TODOIST_DUE_PROPERTY,
-  TODOIST_ID_PROPERTY,
-  TODOIST_STATUS_PROPERTY,
-} from "./constants";
-import {
-  formatDue,
-  formatLabelTag,
-  safeLinkText,
-  safeText,
-  dueTimestamp,
-  convertInlineTodoistLabels,
-  formatDisplayDate,
-  TodoistBackupTask,
-  TodoistComment,
-} from "./todoist";
-import { logDebug } from "./logger";
-import type { StatusAliases } from "./settings";
+  DailyOuraData,
+  formatMinutesFromSeconds,
+  OuraActivity,
+  OuraHeartRateSample,
+  OuraReadiness,
+  OuraSleep,
+  OuraWorkout,
+  summarizeHeartRate,
+} from "./ouraring";
 
-type BlockPayload = {
-  text: string;
-  children: BlockPayload[];
-};
-
-type TaskWithBlock = {
-  task: TodoistBackupTask;
-  block: BlockPayload;
-};
-
-/**
- * Determines the destination page name for a task.
- * Each task lives inside a dedicated page identified by its Todoist id.
- *
- * @param task Todoist task to determine page for.
- * @param pagePrefix Base page name prefix from settings (e.g., "todoist").
- */
-export function resolveTaskPageName(task: TodoistBackupTask, pagePrefix: string): string {
-  return `${pagePrefix}/${String(task.id)}`;
-}
-
-/**
- * Writes tasks to their dedicated Roam pages under the configured prefix.
- *
- * @param pagePrefix Base page name prefix from settings (e.g., "todoist").
- * @param tasks Todoist tasks to serialize.
- * @param projectMap Mapping of project ids to names.
- * @param labelMap Mapping of label ids or names to normalized names.
- * @param statusAliases Custom aliases for task status values.
- */
-export async function writeBlocks(
-  pagePrefix: string,
-  tasks: TodoistBackupTask[],
-  projectMap: Map<string, string>,
-  labelMap: Map<string, string>,
-  statusAliases: StatusAliases
-) {
-  const tasksByPage = new Map<string, TaskWithBlock[]>();
-
-  for (const task of tasks) {
-    const pageName = resolveTaskPageName(task, pagePrefix);
-    // Properties are stored as child blocks, followed by comments
-    const propertyBlocks = buildPropertyBlocks(task, projectMap, labelMap, statusAliases);
-    const commentBlocks = buildCommentBlocks(task);
-    const block: BlockPayload = {
-      text: blockContent(task, projectMap, labelMap, statusAliases),
-      children: [...propertyBlocks, ...commentBlocks],
-    };
-
-    if (!tasksByPage.has(pageName)) {
-      tasksByPage.set(pageName, []);
-    }
-    tasksByPage.get(pageName)!.push({ task, block });
+export async function writeDailyOuraPage(prefix: string, data: DailyOuraData): Promise<void> {
+  if (!ISO_DATE_PATTERN.test(data.date)) {
+    logWarn("invalid_date", { date: data.date });
+    return;
   }
 
-  let pageCount = 0;
-  for (const [pageName, tasksWithBlocks] of tasksByPage.entries()) {
-    const blocks = tasksWithBlocks.map((t) => t.block);
-    await writeBlocksToPage(pageName, blocks);
+  const pageTitle = `${prefix || DEFAULT_PAGE_PREFIX}/${data.date}`;
+  const header = `#ouraring [[${formatDailyNoteDate(data.date)}]]`;
 
-    // Yield to main thread periodically to keep UI responsive
-    pageCount++;
-    if (pageCount % YIELD_BATCH_SIZE === 0) {
-      await yieldToMain();
-    }
-  }
-
-  await cleanupObsoletePages(pagePrefix, tasksByPage);
-}
-
-async function writeBlocksToPage(pageName: string, blocks: BlockPayload[]) {
-  // ensurePage/createPage includes its own delay when creating new pages
-  const pageUid = await ensurePage(pageName);
-
-  const existingTree = getBasicTreeByParentUid(pageUid);
-  const blockMap = buildBlockMap(existingTree);
-
-  // Log existing blocks for debugging
-  const existingIds = Array.from(blockMap.keys());
-  const existingTexts = existingTree.map(n => ({
-    text: n.text?.substring(0, 50) + "...",
-    childCount: n.children?.length ?? 0,
-    firstChildText: n.children?.[0]?.text?.substring(0, 50) ?? "no children"
+  const pageUid = (getPageUidByPageTitle(pageTitle)) ?? (await createPage({
+    title: pageTitle,
+    tree: [buildHeaderNode(header, data)],
   }));
 
-  logDebug("write_blocks_to_page", {
-    pageName,
-    pageUid,
-    existingBlocksCount: existingTree.length,
-    blockMapSize: blockMap.size,
-    existingIds,
-    existingTexts,
-    newBlocksCount: blocks.length,
-  });
-
-  const seenIds = new Set<string>();
-  let blockCount = 0;
-  for (const block of blocks) {
-    // Extract todoist-id from child blocks (new structure) or main text (legacy)
-    const todoistId = extractTodoistIdFromBlock(block);
-    if (!todoistId) {
-      continue;
-    }
-    seenIds.add(todoistId);
-
-    const existing = blockMap.get(todoistId);
-    if (existing) {
-      // Update main block text if changed
-      if (existing.text !== block.text) {
-        logDebug("update_existing_block", { todoistId, uid: existing.uid });
-        await updateBlock({ uid: existing.uid, text: block.text });
-        await delay(MUTATION_DELAY_MS);
-      }
-      // Sync children (properties + comments)
-      await syncChildren(existing.uid, block.children);
-    } else {
-      logDebug("create_new_block", { todoistId, pageName });
-      // createBlock includes its own delays for rate limiting
-      await createBlock({
-        parentUid: pageUid,
-        order: "last",
-        node: toInputNode(block),
-      });
-    }
-
-    // Yield to main thread periodically to keep UI responsive
-    blockCount++;
-    if (blockCount % YIELD_BATCH_SIZE === 0) {
-      await yieldToMain();
-    }
-  }
-
-  await removeObsoleteBlocks(blockMap, seenIds);
-  await updatePlaceholderState(pageUid);
+  const current = getBasicTreeByParentUid(pageUid);
+  await replacePageContent(pageUid, header, data, current);
 }
 
-async function ensurePage(pageName: string): Promise<string> {
-  const existingUid = getPageUidByPageTitle(pageName);
-  if (existingUid) {
-    return existingUid;
-  }
-  // createPage includes its own delay for rate limiting
-  const uid = await createPage({ title: pageName });
-  return uid;
-}
-
-async function removeObsoleteBlocks(blockMap: Map<string, RoamBasicNode>, seenIds: Set<string>) {
-  let removeCount = 0;
-  for (const [todoistId, node] of blockMap.entries()) {
-    if (seenIds.has(todoistId)) {
-      continue;
-    }
-    const content = node.text ?? "";
-    const status = extractTodoistStatus(content);
-    if (status === "completed") {
-      continue;
-    }
-    if (!status && hasCompletedProperty(content)) {
-      continue;
-    }
+async function replacePageContent(
+  pageUid: string,
+  header: string,
+  data: DailyOuraData,
+  current: Array<{ uid: string }>
+): Promise<void> {
+  for (const node of current) {
     await deleteBlock(node.uid);
-    await delay(MUTATION_DELAY_MS);
-
-    // Yield to main thread periodically to keep UI responsive
-    removeCount++;
-    if (removeCount % YIELD_BATCH_SIZE === 0) {
-      await yieldToMain();
-    }
   }
+
+  const headerNode = buildHeaderNode(header, data);
+  await createBlock({ parentUid: pageUid, order: 0, node: headerNode });
+  logDebug("page_written", { pageUid, date: data.date });
 }
 
-/**
- * Extracts todoist-id from a BlockPayload, checking both main text and children.
- */
-function extractTodoistIdFromBlock(block: BlockPayload): string | undefined {
-  // First check main text (legacy format)
-  let id = extractTodoistId(block.text);
-  if (id) return id;
+function buildHeaderNode(header: string, data: DailyOuraData): InputTextNode {
+  const children: InputTextNode[] = [];
 
-  // Check children (new format: properties as child blocks)
-  for (const child of block.children) {
-    id = extractTodoistId(child.text);
-    if (id) return id;
-  }
+  const sleepNode = buildSleepNode(data.sleep);
+  if (sleepNode) children.push(sleepNode);
 
-  return undefined;
-}
+  const readinessNode = buildReadinessNode(data.readiness);
+  if (readinessNode) children.push(readinessNode);
 
-/**
- * Synchronizes child blocks (properties and comments) for an existing task block.
- * Updates existing properties, creates new ones, and handles comment wrappers.
- */
-async function syncChildren(parentUid: string, newChildren: BlockPayload[]) {
-  const existingChildren = getBasicTreeByParentUid(parentUid);
+  const activityNode = buildActivityNode(data.activity);
+  if (activityNode) children.push(activityNode);
 
-  // Build a map of existing property blocks by their property key (e.g., "todoist-id")
-  const existingPropsMap = new Map<string, RoamBasicNode>();
-  for (const child of existingChildren) {
-    const propKey = extractPropertyKey(child.text);
-    if (propKey) {
-      existingPropsMap.set(propKey, child);
-    }
-  }
+  const hrNode = buildHeartRateNode(data.heartrate);
+  if (hrNode) children.push(hrNode);
 
-  // Process new children
-  let childCount = 0;
-  for (const newChild of newChildren) {
-    const propKey = extractPropertyKey(newChild.text);
+  const workoutsNode = buildWorkoutsNode(data.workouts);
+  if (workoutsNode) children.push(workoutsNode);
 
-    if (propKey) {
-      // It's a property block
-      const existing = existingPropsMap.get(propKey);
-      if (existing) {
-        // Update if changed
-        if (existing.text !== newChild.text) {
-          await updateBlock({ uid: existing.uid, text: newChild.text });
-          await delay(MUTATION_DELAY_MS);
-        }
-        existingPropsMap.delete(propKey); // Mark as processed
-      } else {
-        // Create new property - createBlock includes its own delays
-        await createBlock({
-          parentUid,
-          order: "last",
-          node: toInputNode(newChild),
-        });
-      }
-    } else if (isCommentWrapper(newChild.text)) {
-      // It's a comment wrapper - delete old one and recreate
-      for (const child of existingChildren) {
-        if (isCommentWrapper(child.text)) {
-          await deleteBlock(child.uid);
-          await delay(MUTATION_DELAY_MS);
-        }
-      }
-      // createBlock includes its own delays
-      await createBlock({
-        parentUid,
-        order: "last",
-        node: toInputNode(newChild),
-      });
-    }
-
-    // Yield to main thread periodically to keep UI responsive
-    childCount++;
-    if (childCount % YIELD_BATCH_SIZE === 0) {
-      await yieldToMain();
-    }
-  }
-}
-
-/**
- * Extracts the property key from a Roam property line (e.g., "todoist-id" from "todoist-id:: value").
- */
-function extractPropertyKey(text: string): string | undefined {
-  const match = text.match(/^([\w-]+)::/);
-  return match ? match[1] : undefined;
-}
-
-async function updatePlaceholderState(pageUid: string) {
-  const tree = getBasicTreeByParentUid(pageUid);
-  const placeholders = tree.filter((node) => node.text.trim() === PLACEHOLDER_CONTENT);
-  for (const placeholder of placeholders) {
-    await deleteBlock(placeholder.uid);
-    await delay(MUTATION_DELAY_MS);
-  }
-}
-
-async function cleanupObsoletePages(
-  pagePrefix: string,
-  currentTasksByPage: Map<string, TaskWithBlock[]>
-) {
-  const currentTaskIds = new Set<string>();
-  for (const tasksWithBlocks of currentTasksByPage.values()) {
-    for (const { task } of tasksWithBlocks) {
-      currentTaskIds.add(String(task.id));
-    }
-  }
-
-  const prefix = `${pagePrefix}/`;
-  const pageTitles = getPageTitlesStartingWithPrefix(prefix);
-  let cleanupCount = 0;
-  for (const pageTitle of pageTitles) {
-    if (currentTasksByPage.has(pageTitle)) {
-      continue;
-    }
-    const pageUid = getPageUidByPageTitle(pageTitle);
-    if (!pageUid) {
-      continue;
-    }
-
-    const tree = getBasicTreeByParentUid(pageUid);
-    const blockMap = buildBlockMap(tree);
-    for (const [todoistId, node] of blockMap.entries()) {
-      if (currentTaskIds.has(todoistId)) {
-        continue;
-      }
-      const content = node.text ?? "";
-      const status = extractTodoistStatus(content);
-      if (status === "completed") {
-        continue;
-      }
-      if (!status && hasCompletedProperty(content)) {
-        continue;
-      }
-      await deleteBlock(node.uid);
-      await delay(MUTATION_DELAY_MS);
-
-      // Yield to main thread periodically to keep UI responsive
-      cleanupCount++;
-      if (cleanupCount % YIELD_BATCH_SIZE === 0) {
-        await yieldToMain();
-      }
-    }
-
-    await updatePlaceholderState(pageUid);
-
-    // Yield after processing each page
-    await yieldToMain();
-  }
-}
-
-/**
- * Builds block payloads for a set of Todoist tasks, including comments.
- *
- * @param tasks Tasks returned from Todoist ready for serialization.
- * @param projectMap Mapping of project ids to names.
- * @param labelMap Mapping of label ids or names to normalized names.
- * @param statusAliases Custom aliases for task status values.
- */
-export function buildBlocks(
-  tasks: TodoistBackupTask[],
-  projectMap: Map<string, string>,
-  labelMap: Map<string, string>,
-  statusAliases: StatusAliases
-): BlockPayload[] {
-  const sorted = [...tasks].sort((a, b) => {
-    const aCompleted = Boolean(a.completed);
-    const bCompleted = Boolean(b.completed);
-    if (aCompleted !== bCompleted) {
-      return aCompleted ? 1 : -1;
-    }
-    const aTime = dueTimestamp(a.due);
-    const bTime = dueTimestamp(b.due);
-    if (aTime !== bTime) {
-      return aTime - bTime;
-    }
-    return safeText(a.content).localeCompare(safeText(b.content));
-  });
-
-  return sorted.map((task) => {
-    const propertyBlocks = buildPropertyBlocks(task, projectMap, labelMap, statusAliases);
-    const commentBlocks = buildCommentBlocks(task);
-    return {
-      text: blockContent(task, projectMap, labelMap, statusAliases),
-      children: [...propertyBlocks, ...commentBlocks],
-    };
-  });
-}
-
-/**
- * Generates only the title/header text for a task block.
- * Properties are now stored as child blocks, not in the main text.
- *
- * @param task Todoist task with optional completion metadata.
- * @param projectMap Mapping of project ids to names.
- * @param _labelMap Unused, kept for API compatibility.
- * @param _statusAliases Unused, kept for API compatibility.
- */
-export function blockContent(
-  task: TodoistBackupTask,
-  projectMap: Map<string, string>,
-  _labelMap: Map<string, string>,
-  _statusAliases: StatusAliases
-) {
-  const dueText = resolvePrimaryDate(task);
-  const rawTitle = safeLinkText(safeText(task.content) || "Untitled task");
-  const taskTitle = convertInlineTodoistLabels(rawTitle);
-  const projectName = projectMap.get(String(task.project_id ?? "")) ?? "Inbox";
-
-  const dateLink = dueText ? `[[${dueText}]]` : "[[No due date]]";
-
-  // Title includes task content and project tag for quick reference
-  return `${dateLink} ${taskTitle} #${projectName}`;
-}
-
-/**
- * Builds property blocks as children of the main task block.
- * This ensures todoist-id:: is stored in a child block where it can be found.
- */
-export function buildPropertyBlocks(
-  task: TodoistBackupTask,
-  _projectMap: Map<string, string>,
-  labelMap: Map<string, string>,
-  statusAliases: StatusAliases
-): BlockPayload[] {
-  const url = task.url ?? `https://todoist.com/showTask?id=${task.id}`;
-  const labels = resolveLabels(task, labelMap);
-
-  const properties: BlockPayload[] = [];
-
-  // todoist-id is always first - this is how we identify the block
-  properties.push({ text: `todoist-id:: [${task.id}](${url})`, children: [] });
-
-  const duePropertyValue = resolveDuePropertyValue(task);
-  if (duePropertyValue) {
-    properties.push({ text: `${TODOIST_DUE_PROPERTY}:: ${duePropertyValue}`, children: [] });
-  }
-
-  const description = safeText(task.description ?? "");
-  if (description) {
-    properties.push({ text: `todoist-desc:: ${description}`, children: [] });
-  }
-
-  const labelsProperty = labels
-    .map((label) => formatLabelTag(label))
-    .filter((value) => value.length > 0)
-    .join(" ");
-
-  if (labelsProperty) {
-    properties.push({ text: `todoist-labels:: ${labelsProperty}`, children: [] });
-  }
-
-  if (task.completed) {
-    const completedDate = task.completed_date ?? task.completed_at ?? "";
-    const formatted = formatCompletedDate(completedDate);
-    const completedValue = formatted ? `[[${formatted}]]` : completedDate ? safeLinkText(completedDate) : "";
-    if (completedValue) {
-      properties.push({ text: `${TODOIST_COMPLETED_PROPERTY}:: ${completedValue}`, children: [] });
-    }
-  }
-
-  const statusValue = task.status ?? (task.completed ? "completed" : "active");
-  const statusAlias = resolveStatusAlias(statusValue, statusAliases);
-  properties.push({ text: `${TODOIST_STATUS_PROPERTY}:: ${statusAlias}`, children: [] });
-
-  return properties;
-}
-
-function buildCommentBlocks(task: TodoistBackupTask): BlockPayload[] {
-  const comments = task.comments ?? [];
-  if (comments.length === 0) {
-    return [];
-  }
-
-  const sorted = [...comments].sort((a, b) => {
-    const aTime = commentTimestamp(a.posted_at);
-    const bTime = commentTimestamp(b.posted_at);
-    if (aTime !== bTime) {
-      return aTime - bTime;
-    }
-    return String(a.id).localeCompare(String(b.id));
-  });
-
-  const wrapper: BlockPayload = {
-    text: buildCommentWrapperContent(sorted.length),
-    children: sorted.map((comment) => ({
-      text: commentContent(task, comment),
-      children: [],
-    })),
-  };
-
-  return [wrapper];
-}
-
-function buildCommentWrapperContent(commentCount: number) {
-  return ["comments...", `${TODOIST_COMMENTS_PROPERTY}:: ${commentCount}`].join("\n");
-}
-
-function commentContent(task: TodoistBackupTask, comment: TodoistComment) {
-  const sanitizedText = safeText(comment.content);
-  const formattedText = sanitizedText ? safeLinkText(sanitizedText) : "";
-  const url = buildCommentUrl(task, comment);
-  const prefix = `[todoist](${url})`;
-  const commentLine = formattedText ? `${prefix} ${formattedText}` : prefix;
-  const lines = [commentLine, `${TODOIST_COMMENT_ID_PROPERTY}:: ${comment.id}`];
-  if (comment.posted_at) {
-    const formatted = formatCommentTimestamp(comment.posted_at);
-    lines.push(`${TODOIST_COMMENT_POSTED_PROPERTY}:: ${formatted}`);
-  }
-  return lines.join("\n");
-}
-
-function buildCommentUrl(task: TodoistBackupTask, comment: TodoistComment) {
-  const taskId = String(comment.task_id ?? task.id);
-  return `https://todoist.com/app/task/${taskId}/comment/${comment.id}`;
-}
-
-function formatCommentTimestamp(value: string) {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return safeText(value);
-  }
-  return parsed.toISOString();
-}
-
-function isCommentWrapper(content: string) {
-  return new RegExp(`(?:^|\\n)${TODOIST_COMMENTS_PROPERTY}::`, "m").test(content);
-}
-
-function commentTimestamp(value: string | null | undefined) {
-  if (!value) {
-    return Number.POSITIVE_INFINITY;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
-}
-
-function resolvePrimaryDate(task: TodoistBackupTask) {
-  const dueFormatted = formatDue(task.due);
-  if (dueFormatted) {
-    return safeLinkText(dueFormatted);
-  }
-  const fallback = task.fallbackDue ?? "";
-  if (fallback) {
-    return safeLinkText(fallback);
-  }
-
-  if (task.completed) {
-    const completedFormatted = formatCompletedDate(task.completed_date ?? task.completed_at ?? "");
-    if (completedFormatted) {
-      return safeLinkText(completedFormatted);
-    }
-  }
-
-  return "";
-}
-
-function resolveDuePropertyValue(task: TodoistBackupTask) {
-  const explicitDue = formatDue(task.due);
-  if (explicitDue) {
-    return explicitDue;
-  }
-  return undefined;
-}
-
-function formatCompletedDate(value: string | null | undefined) {
-  return formatDisplayDate(value);
-}
-
-export function extractTodoistId(content: string): string | undefined {
-  const match = content.match(new RegExp(`^${TODOIST_ID_PROPERTY}::\\s*(.+)$`, "mi"));
-  if (!match) {
-    return undefined;
-  }
-
-  const rawValue = match[1].trim();
-
-  // Handle markdown link format: [id](url) - extract just the id
-  // Support both numeric IDs (123456) and alphanumeric IDs (mock-001)
-  const linkMatch = rawValue.match(/^\[([^\]]+)\]\(/);
-  if (linkMatch) {
-    return linkMatch[1];
-  }
-
-  // Handle plain ID (number or alphanumeric)
-  const plainMatch = rawValue.match(/^([\w-]+)/);
-  if (plainMatch) {
-    return plainMatch[1];
-  }
-
-  return rawValue;
-}
-
-function extractTodoistStatus(content: string): TodoistBackupTask["status"] | undefined {
-  const match = content.match(new RegExp(`^${TODOIST_STATUS_PROPERTY}::\\s*(.+)$`, "mi"));
-  const value = match ? match[1].trim().toLowerCase() : undefined;
-  if (value === "active" || value === "completed" || value === "deleted") {
-    return value;
-  }
-  return undefined;
-}
-
-function hasCompletedProperty(content: string) {
-  return new RegExp(`^${TODOIST_COMPLETED_PROPERTY}::\\s*(.+)$`, "mi").test(content);
-}
-
-export function buildBlockMap(tree: RoamBasicNode[]) {
-  const map = new Map<string, RoamBasicNode>();
-
-  for (const node of tree) {
-    const text = node.text ?? "";
-    let id = extractTodoistId(text);
-
-    // If not found in main block, check children (properties are stored as child blocks)
-    if (!id && node.children && node.children.length > 0) {
-      for (const child of node.children) {
-        const childText = child.text ?? "";
-        id = extractTodoistId(childText);
-        if (id) {
-          break;
-        }
-      }
-    }
-
-    if (id) {
-      map.set(id, node);
-      logDebug("build_block_map_found", { id, uid: node.uid });
-    }
-  }
-  return map;
-}
-
-function resolveLabels(task: TodoistBackupTask, labelMap: Map<string, string>) {
-  const values = task.labels ?? task.label_ids ?? [];
-  const names: string[] = [];
-  for (const value of values ?? []) {
-    const key = String(value);
-    const name = labelMap.get(key) ?? key;
-    const normalized = safeText(name);
-    if (normalized && !names.includes(normalized)) {
-      names.push(normalized);
-    }
-  }
-  return names;
-}
-
-function resolveStatusAlias(status: string, statusAliases: StatusAliases): string {
-  switch (status) {
-    case "active":
-      return statusAliases.active;
-    case "completed":
-      return statusAliases.completed;
-    case "deleted":
-      return statusAliases.deleted;
-    default:
-      return status;
-  }
-}
-
-function toInputNode(payload: BlockPayload): InputTextNode {
   return {
-    text: payload.text,
-    children: payload.children.map(toInputNode),
+    text: header,
+    children,
   };
 }
 
+function buildSleepNode(sessions: OuraSleep[]): InputTextNode | null {
+  if (sessions.length === 0) return null;
+  const primary = sessions[0];
+  const rows: InputTextNode[] = [];
+  pushIfValue(rows, "Score", formatNumber(primary.score));
+  pushIfValue(rows, "Efficiency", formatPercentage(primary.efficiency));
+  pushIfValue(rows, "Total sleep", formatMinutesFromSeconds(primary.total_sleep_duration));
+  pushIfValue(rows, "Time in bed", formatMinutesFromSeconds(primary.time_in_bed));
+  pushIfValue(rows, "Avg HR", formatHeartRate(primary.average_hr, primary.lowest_hr));
+  pushIfValue(rows, "Bedtime", formatBedtime(primary.bedtime_start, primary.bedtime_end));
+
+  return rows.length > 0 ? { text: "Sleep", children: rows } : null;
+}
+
+function buildReadinessNode(entries: OuraReadiness[]): InputTextNode | null {
+  if (entries.length === 0) return null;
+  const primary = entries[0];
+  const rows: InputTextNode[] = [];
+  pushIfValue(rows, "Score", formatNumber(primary.score));
+  pushIfValue(rows, "Activity balance", formatNumber(primary.score_activity_balance));
+  pushIfValue(rows, "Sleep balance", formatNumber(primary.score_sleep_balance));
+  pushIfValue(rows, "Previous day", formatNumber(primary.score_previous_day));
+  pushIfValue(rows, "Recovery index", formatNumber(primary.score_recovery_index));
+  pushIfValue(rows, "Resting HR", formatNumber(primary.score_resting_hr, "bpm"));
+  pushIfValue(rows, "HRV balance", formatNumber(primary.score_hrv_balance));
+  return rows.length > 0 ? { text: "Readiness", children: rows } : null;
+}
+
+function buildActivityNode(entries: OuraActivity[]): InputTextNode | null {
+  if (entries.length === 0) return null;
+  const primary = entries[0];
+  const rows: InputTextNode[] = [];
+  pushIfValue(rows, "Score", formatNumber(primary.score));
+  pushIfValue(rows, "Steps", formatNumber(primary.steps));
+  pushIfValue(rows, "Active calories", formatNumber(primary.active_calories, "kcal"));
+  pushIfValue(rows, "Total calories", formatNumber(primary.total_calories, "kcal"));
+  pushIfValue(rows, "Distance", formatDistance(primary.equivalent_walking_distance));
+  pushIfValue(rows, "High activity", formatMinutesFromSeconds(primary.high_activity_time));
+  pushIfValue(rows, "Medium activity", formatMinutesFromSeconds(primary.medium_activity_time));
+  pushIfValue(rows, "Low activity", formatMinutesFromSeconds(primary.low_activity_time));
+  pushIfValue(rows, "Inactivity alerts", formatNumber(primary.inactivity_alerts));
+  return rows.length > 0 ? { text: "Activity", children: rows } : null;
+}
+
+function buildHeartRateNode(samples: OuraHeartRateSample[]): InputTextNode | null {
+  const summary = summarizeHeartRate(samples);
+  if (!summary.average && !summary.min && !summary.max) {
+    return null;
+  }
+  const parts: string[] = [];
+  if (summary.average !== undefined) parts.push(`${summary.average} bpm avg`);
+  if (summary.min !== undefined) parts.push(`min ${summary.min}`);
+  if (summary.max !== undefined) parts.push(`max ${summary.max}`);
+  return { text: "Heart rate", children: [{ text: parts.join(" / ") }] };
+}
+
+function buildWorkoutsNode(workouts: OuraWorkout[]): InputTextNode | null {
+  if (workouts.length === 0) return null;
+  const rows = workouts.map((workout) => ({
+    text: formatWorkoutLine(workout),
+  }));
+  return { text: "Workouts", children: rows };
+}
+
+function pushIfValue(collection: InputTextNode[], label: string, value?: string): void {
+  if (value) {
+    collection.push({ text: `${label}: ${value}` });
+  }
+}
+
+function formatNumber(value?: number, suffix?: string): string | undefined {
+  if (value === undefined || Number.isNaN(value)) return undefined;
+  return suffix ? `${value} ${suffix}` : `${value}`;
+}
+
+function formatPercentage(value?: number): string | undefined {
+  if (value === undefined || Number.isNaN(value)) return undefined;
+  return `${value}%`;
+}
+
+function formatHeartRate(avg?: number, min?: number): string | undefined {
+  if (avg === undefined && min === undefined) return undefined;
+  const parts: string[] = [];
+  if (avg !== undefined) parts.push(`${avg} bpm avg`);
+  if (min !== undefined) parts.push(`min ${min}`);
+  return parts.join(" / ");
+}
+
+function formatBedtime(start?: string, end?: string): string | undefined {
+  if (!start && !end) return undefined;
+  const startLabel = start ? formatTime(start) : "";
+  const endLabel = end ? formatTime(end) : "";
+  return `${startLabel}${startLabel && endLabel ? " – " : ""}${endLabel}`;
+}
+
+function formatWorkoutLine(workout: OuraWorkout): string {
+  const startTime = formatTime(workout.start_datetime);
+  const duration = calculateDuration(workout.start_datetime, workout.end_datetime);
+  const parts: string[] = [];
+  if (duration) parts.push(duration);
+  if (workout.calories !== undefined) parts.push(`${workout.calories} kcal`);
+  if (workout.distance !== undefined) parts.push(`${workout.distance} km`);
+  if (workout.intensity) parts.push(workout.intensity);
+  const activity = workout.sport ?? "Workout";
+  const details = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+  return `${startTime} – ${activity}${details}`;
+}
+
+function calculateDuration(start?: string, end?: string): string | undefined {
+  if (!start || !end) return undefined;
+  const startTime = Date.parse(start);
+  const endTime = Date.parse(end);
+  if (Number.isNaN(startTime) || Number.isNaN(endTime)) return undefined;
+  return formatMinutesFromSeconds(Math.max(0, (endTime - startTime) / 1000));
+}
+
+function formatTime(value?: string): string {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDailyNoteDate(date: string): string {
+  const [year, month, day] = date.split("-").map((part) => parseInt(part, 10));
+  const parsedDate = new Date(year, month - 1, day);
+  const monthName = parsedDate.toLocaleString("en", { month: "long" });
+  const dayWithOrdinal = formatOrdinal(day);
+  return `${monthName} ${dayWithOrdinal}, ${year}`;
+}
+
+function formatOrdinal(day: number): string {
+  const remainder = day % 100;
+  if (remainder >= 11 && remainder <= 13) return `${day}th`;
+  switch (day % 10) {
+    case 1:
+      return `${day}st`;
+    case 2:
+      return `${day}nd`;
+    case 3:
+      return `${day}rd`;
+    default:
+      return `${day}th`;
+  }
+}
+
+function formatDistance(meters?: number): string | undefined {
+  if (meters === undefined || Number.isNaN(meters)) return undefined;
+  const km = meters / 1000;
+  return `${km.toFixed(2)} km`;
+}

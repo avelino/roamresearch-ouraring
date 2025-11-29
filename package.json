@@ -1,6 +1,7 @@
 {
-  "name": "roam-todoist-backup",
+  "name": "roam-ouraring",
   "version": "1.0.2",
+  "description": "Roam Research extension that imports Oura Ring data into daily pages.",
   "type": "module",
   "main": "dist/extension.js",
   "scripts": {

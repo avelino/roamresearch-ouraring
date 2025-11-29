@@ -1,4 +1,4 @@
-const LOG_PREFIX = "[roam-todoist-backup]";
+const LOG_PREFIX = "[roam-ouraring]";
 
 let debugEnabled = false;
 
