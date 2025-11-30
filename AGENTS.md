@@ -66,7 +66,8 @@ Module Details
 ### blocks.ts
 
 - `writeDailyOuraPage`: Creates or updates a page for a given date with Oura data.
-- `buildHeaderNode`: Constructs the main block with `#ouraring [[Date]]` header and section children.
+- `buildHeaderText`: Constructs header text with date and inline scores: `#ouraring [[Date]] sleep: X / readiness: Y`.
+- `buildHeaderNode`: Constructs the main block with header text and section children.
 - Section builders: `buildSleepNode`, `buildReadinessNode`, `buildActivityNode`, `buildHeartRateNode`, `buildWorkoutsNode`, `buildTagsNode`.
 - Formatting utilities: `formatNumber`, `formatPercentage`, `formatHeartRate`, `formatBedtime`, `formatTime`, `formatTimestamp`, `formatDistance`, `formatTemperature`, `formatDailyNoteDate`, `formatOrdinal`, `formatTagLine`, `formatTagTime`, `formatTagType`, `formatActivityName`, `formatWorkoutLine`.
 
@@ -128,7 +129,7 @@ Block Structure
 Daily pages are written with the following structure (fields shown when data is available):
 
 ```
-#ouraring [[November 29th, 2025]]
+#ouraring [[November 29th, 2025]] sleep: 85 / readiness: 78
   Sleep
     Score: 85
     Bedtime: 22:30 – 06:45
