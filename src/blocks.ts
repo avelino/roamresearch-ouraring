@@ -27,7 +27,7 @@ export async function writeDailyOuraPage(prefix: string, data: DailyOuraData): P
   }
 
   const pageTitle = `${prefix || DEFAULT_PAGE_PREFIX}/${data.date}`;
-  const header = `#ouraring [[${formatDailyNoteDate(data.date)}]]`;
+  const header = buildHeaderText(data);
 
   const pageUid = (getPageUidByPageTitle(pageTitle)) ?? (await createPage({
     title: pageTitle,
@@ -51,6 +51,19 @@ async function replacePageContent(
   const headerNode = buildHeaderNode(header, data);
   await createBlock({ parentUid: pageUid, order: 0, node: headerNode });
   logDebug("page_written", { pageUid, date: data.date });
+}
+
+function buildHeaderText(data: DailyOuraData): string {
+  const dateStr = formatDailyNoteDate(data.date);
+  const sleepScore = data.sleep.length > 0 ? data.sleep[0].score : undefined;
+  const readinessScore = data.readiness.length > 0 ? data.readiness[0].score : undefined;
+
+  const scoreParts: string[] = [];
+  if (sleepScore !== undefined) scoreParts.push(`sleep: ${sleepScore}`);
+  if (readinessScore !== undefined) scoreParts.push(`readiness: ${readinessScore}`);
+
+  const scoresSuffix = scoreParts.length > 0 ? ` ${scoreParts.join(" / ")}` : "";
+  return `#ouraring [[${dateStr}]]${scoresSuffix}`;
 }
 
 function buildHeaderNode(header: string, data: DailyOuraData): InputTextNode {

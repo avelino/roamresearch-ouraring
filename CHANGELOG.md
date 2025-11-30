@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Header block now displays sleep and readiness scores inline: `#ouraring [[Date]] sleep: X / readiness: Y` for quick overview without expanding sections.
+
 ## [1.0.0] - 2025-11-30
 
 ### Added
