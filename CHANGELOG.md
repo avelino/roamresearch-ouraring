@@ -1,3 +1,19 @@
+# 1.0.0 (2025-11-30)
+
+
+### Bug Fixes
+
+* interpret ISO date-only (YYYY-MM-DD) values as local time in formatDisplayDate ([1005f9c](https://github.com/avelino/roamresearch-ouraring/commit/1005f9ce1f148e5c7483149227057fd797e60352))
+* prevent sync from blocking typing in Roam by yielding to browser main thread during block creation ([5314769](https://github.com/avelino/roamresearch-ouraring/commit/5314769b12e37677f724e6a2de6d50edbcb0fadd))
+* **settings:** increase MUTATION_DELAY_MS from 50ms to 100ms for safer Roam API throttling ([8deed71](https://github.com/avelino/roamresearch-ouraring/commit/8deed714b4d1c1ac05e81192e03d6a5ecfcd4349))
+
+
+### Features
+
+* **blocks.ts:** add `buildHeaderText` for correct page header with inline scores ([a4db32b](https://github.com/avelino/roamresearch-ouraring/commit/a4db32b7b7e2c2354cbaed8ea13cb04db2015046))
+* create Roam Oura Ring extension for Roam Research ([1da5e9e](https://github.com/avelino/roamresearch-ouraring/commit/1da5e9e32f8fefa100314c8898a75c7696ae57cd))
+* initial release of Oura Ring → Roam Research extension ([df923c4](https://github.com/avelino/roamresearch-ouraring/commit/df923c49fb3579c5132a530f6ba153c791853725))
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
