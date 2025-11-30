@@ -1,7 +1,7 @@
 // Use React from window to avoid version conflicts with Roam's React
 const getReact = () => (window as unknown as { React: typeof import("react") }).React;
 
-import { CONFIG_PAGE_TITLE, DEFAULT_PAGE_PREFIX, DEFAULT_CORS_PROXY } from "./constants";
+import { CONFIG_PAGE_TITLE, DEFAULT_PAGE_PREFIX, DEFAULT_PROXY_URL } from "./constants";
 import type { ExtensionAPI } from "./main";
 
 interface RoamBasicNode {
@@ -147,7 +147,7 @@ export type SettingsSnapshot = {
   pagePrefix: string;
   daysToSync: number;
   enableDebugLogs: boolean;
-  corsProxyUrl: string;
+  proxyUrl: string;
 };
 
 export type SettingsHandle =
@@ -159,7 +159,7 @@ const SETTINGS_KEYS = {
   pagePrefix: "page_prefix",
   daysToSync: "days_to_sync",
   enableDebugLogs: "enable_debug_logs",
-  corsProxyUrl: "cors_proxy_url",
+  proxyUrl: "proxy_url",
 } as const;
 
 const DEFAULT_SETTINGS: Record<string, unknown> = {
@@ -167,7 +167,7 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
   [SETTINGS_KEYS.pagePrefix]: DEFAULT_PAGE_PREFIX,
   [SETTINGS_KEYS.daysToSync]: 7,
   [SETTINGS_KEYS.enableDebugLogs]: false,
-  [SETTINGS_KEYS.corsProxyUrl]: DEFAULT_CORS_PROXY,
+  [SETTINGS_KEYS.proxyUrl]: DEFAULT_PROXY_URL,
 };
 
 const SETTINGS_TEMPLATE: InputTextNode[] = [
@@ -175,7 +175,7 @@ const SETTINGS_TEMPLATE: InputTextNode[] = [
   { text: "Page Prefix", children: [{ text: DEFAULT_PAGE_PREFIX }] },
   { text: "Days to Sync", children: [{ text: "7" }] },
   { text: "Enable Debug Logs" },
-  { text: "CORS Proxy URL", children: [{ text: DEFAULT_CORS_PROXY }] },
+  { text: "Proxy URL", children: [{ text: DEFAULT_PROXY_URL }] },
 ];
 
 export async function initializeSettings(extensionAPI: ExtensionAPI): Promise<SettingsHandle> {
@@ -203,13 +203,13 @@ function readSettingsFromPanel(extensionAPI: ExtensionAPI): SettingsSnapshot {
   const pagePrefix = getString(allSettings, SETTINGS_KEYS.pagePrefix) || DEFAULT_PAGE_PREFIX;
   const daysToSync = Math.max(getNumber(allSettings, SETTINGS_KEYS.daysToSync, 7), 1);
   const enableDebugLogs = getBoolean(allSettings, SETTINGS_KEYS.enableDebugLogs, false);
-  const corsProxyUrl = getString(allSettings, SETTINGS_KEYS.corsProxyUrl) || DEFAULT_CORS_PROXY;
+  const proxyUrl = sanitizeProxyUrl(getString(allSettings, SETTINGS_KEYS.proxyUrl)) ?? DEFAULT_PROXY_URL;
   return {
     token,
     pagePrefix,
     daysToSync,
     enableDebugLogs,
-    corsProxyUrl,
+    proxyUrl,
   };
 }
 
@@ -225,15 +225,16 @@ function readSettingsFromPage(pageUid: string): SettingsSnapshot {
     1
   );
   const enableDebugLogs = hasFlag(tree, "Enable Debug Logs");
-  const corsProxyUrl =
-    getSettingValueFromTree({ tree, key: "CORS Proxy URL", defaultValue: DEFAULT_CORS_PROXY }).trim() || DEFAULT_CORS_PROXY;
+  const proxyUrl = sanitizeProxyUrl(
+    getSettingValueFromTree({ tree, key: "Proxy URL", defaultValue: DEFAULT_PROXY_URL })
+  ) ?? DEFAULT_PROXY_URL;
 
   return {
     token,
     pagePrefix,
     daysToSync,
     enableDebugLogs,
-    corsProxyUrl,
+    proxyUrl,
   };
 }
 
@@ -279,6 +280,22 @@ function toFlexRegex(key: string): RegExp {
 function sanitizeToken(raw: string | undefined): string | undefined {
   const trimmed = (raw ?? "").trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
+ * Sanitizes and validates the proxy URL.
+ * Returns undefined if empty or invalid.
+ */
+function sanitizeProxyUrl(raw: string | undefined): string | undefined {
+  const trimmed = (raw ?? "").trim();
+  if (trimmed.length === 0) return undefined;
+  try {
+    new URL(trimmed);
+    // Remove trailing slash for consistency
+    return trimmed.replace(/\/+$/, "");
+  } catch {
+    return undefined;
+  }
 }
 
 function getString(source: Record<string, unknown>, key: string): string {
@@ -388,12 +405,12 @@ function registerSettingsPanel(extensionAPI: ExtensionAPI): void {
         },
       },
       {
-        id: SETTINGS_KEYS.corsProxyUrl,
+        id: SETTINGS_KEYS.proxyUrl,
         name: "CORS Proxy URL",
-        description: "Proxy URL to bypass CORS restrictions. Default: corsproxy.io. Leave empty to disable.",
+        description: "CORS proxy to bypass browser restrictions (default: corsproxy.io). Only change if you have issues or prefer a custom proxy.",
         action: {
           type: "reactComponent",
-          component: TextInput(SETTINGS_KEYS.corsProxyUrl, "text", DEFAULT_CORS_PROXY),
+          component: TextInput(SETTINGS_KEYS.proxyUrl, "text", DEFAULT_PROXY_URL),
         },
       },
     ],

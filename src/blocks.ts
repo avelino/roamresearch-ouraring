@@ -15,6 +15,7 @@ import {
   OuraHeartRateSample,
   OuraReadiness,
   OuraSleep,
+  OuraTag,
   OuraWorkout,
   summarizeHeartRate,
 } from "./ouraring";
@@ -70,6 +71,9 @@ function buildHeaderNode(header: string, data: DailyOuraData): InputTextNode {
   const workoutsNode = buildWorkoutsNode(data.workouts);
   if (workoutsNode) children.push(workoutsNode);
 
+  const tagsNode = buildTagsNode(data.tags);
+  if (tagsNode) children.push(tagsNode);
+
   return {
     text: header,
     children,
@@ -80,12 +84,43 @@ function buildSleepNode(sessions: OuraSleep[]): InputTextNode | null {
   if (sessions.length === 0) return null;
   const primary = sessions[0];
   const rows: InputTextNode[] = [];
+
+  // Main score and timing
   pushIfValue(rows, "Score", formatNumber(primary.score));
-  pushIfValue(rows, "Efficiency", formatPercentage(primary.efficiency));
+  pushIfValue(rows, "Bedtime", formatBedtime(primary.bedtime_start, primary.bedtime_end));
   pushIfValue(rows, "Total sleep", formatMinutesFromSeconds(primary.total_sleep_duration));
   pushIfValue(rows, "Time in bed", formatMinutesFromSeconds(primary.time_in_bed));
+
+  // Sleep stages
+  pushIfValue(rows, "Deep sleep", formatMinutesFromSeconds(primary.deep_sleep_duration));
+  pushIfValue(rows, "REM sleep", formatMinutesFromSeconds(primary.rem_sleep_duration));
+  pushIfValue(rows, "Light sleep", formatMinutesFromSeconds(primary.light_sleep_duration));
+  pushIfValue(rows, "Awake time", formatMinutesFromSeconds(primary.awake_time));
+
+  // Quality metrics
+  pushIfValue(rows, "Efficiency", formatPercentage(primary.efficiency));
+  pushIfValue(rows, "Latency", formatMinutesFromSeconds(primary.latency));
+  pushIfValue(rows, "Restless periods", formatNumber(primary.restless_periods));
+
+  // Heart metrics
   pushIfValue(rows, "Avg HR", formatHeartRate(primary.average_hr, primary.lowest_hr));
-  pushIfValue(rows, "Bedtime", formatBedtime(primary.bedtime_start, primary.bedtime_end));
+  pushIfValue(rows, "Avg HRV", formatNumber(primary.average_hrv, "ms"));
+
+  // Contributors (if available)
+  if (primary.contributors) {
+    const c = primary.contributors;
+    const contributorsNode: InputTextNode = { text: "Contributors", children: [] };
+    pushIfValue(contributorsNode.children!, "Deep sleep", formatNumber(c.deep_sleep));
+    pushIfValue(contributorsNode.children!, "Efficiency", formatNumber(c.efficiency));
+    pushIfValue(contributorsNode.children!, "Latency", formatNumber(c.latency));
+    pushIfValue(contributorsNode.children!, "REM sleep", formatNumber(c.rem_sleep));
+    pushIfValue(contributorsNode.children!, "Restfulness", formatNumber(c.restfulness));
+    pushIfValue(contributorsNode.children!, "Timing", formatNumber(c.timing));
+    pushIfValue(contributorsNode.children!, "Total sleep", formatNumber(c.total_sleep));
+    if (contributorsNode.children!.length > 0) {
+      rows.push(contributorsNode);
+    }
+  }
 
   return rows.length > 0 ? { text: "Sleep", children: rows } : null;
 }
@@ -94,13 +129,39 @@ function buildReadinessNode(entries: OuraReadiness[]): InputTextNode | null {
   if (entries.length === 0) return null;
   const primary = entries[0];
   const rows: InputTextNode[] = [];
+
+  // Main score
   pushIfValue(rows, "Score", formatNumber(primary.score));
+
+  // Temperature metrics
+  pushIfValue(rows, "Temperature deviation", formatTemperature(primary.temperature_deviation));
+  pushIfValue(rows, "Temperature trend", formatTemperature(primary.temperature_trend_deviation));
+
+  // Legacy score fields (for APIs that return these directly)
   pushIfValue(rows, "Activity balance", formatNumber(primary.score_activity_balance));
   pushIfValue(rows, "Sleep balance", formatNumber(primary.score_sleep_balance));
   pushIfValue(rows, "Previous day", formatNumber(primary.score_previous_day));
   pushIfValue(rows, "Recovery index", formatNumber(primary.score_recovery_index));
-  pushIfValue(rows, "Resting HR", formatNumber(primary.score_resting_hr, "bpm"));
+  pushIfValue(rows, "Resting HR", formatNumber(primary.score_resting_hr));
   pushIfValue(rows, "HRV balance", formatNumber(primary.score_hrv_balance));
+
+  // Contributors (if available)
+  if (primary.contributors) {
+    const c = primary.contributors;
+    const contributorsNode: InputTextNode = { text: "Contributors", children: [] };
+    pushIfValue(contributorsNode.children!, "Activity balance", formatNumber(c.activity_balance));
+    pushIfValue(contributorsNode.children!, "Body temperature", formatNumber(c.body_temperature));
+    pushIfValue(contributorsNode.children!, "HRV balance", formatNumber(c.hrv_balance));
+    pushIfValue(contributorsNode.children!, "Previous day activity", formatNumber(c.previous_day_activity));
+    pushIfValue(contributorsNode.children!, "Previous night", formatNumber(c.previous_night));
+    pushIfValue(contributorsNode.children!, "Recovery index", formatNumber(c.recovery_index));
+    pushIfValue(contributorsNode.children!, "Resting heart rate", formatNumber(c.resting_heart_rate));
+    pushIfValue(contributorsNode.children!, "Sleep balance", formatNumber(c.sleep_balance));
+    if (contributorsNode.children!.length > 0) {
+      rows.push(contributorsNode);
+    }
+  }
+
   return rows.length > 0 ? { text: "Readiness", children: rows } : null;
 }
 
@@ -108,15 +169,38 @@ function buildActivityNode(entries: OuraActivity[]): InputTextNode | null {
   if (entries.length === 0) return null;
   const primary = entries[0];
   const rows: InputTextNode[] = [];
+
+  // Main score
   pushIfValue(rows, "Score", formatNumber(primary.score));
+
+  // Movement metrics
   pushIfValue(rows, "Steps", formatNumber(primary.steps));
+  pushIfValue(rows, "Daily movement", formatDistance(primary.daily_movement));
+  pushIfValue(rows, "Distance", formatDistance(primary.equivalent_walking_distance));
+
+  // Calorie metrics
   pushIfValue(rows, "Active calories", formatNumber(primary.active_calories, "kcal"));
   pushIfValue(rows, "Total calories", formatNumber(primary.total_calories, "kcal"));
-  pushIfValue(rows, "Distance", formatDistance(primary.equivalent_walking_distance));
+  pushIfValue(rows, "Target calories", formatNumber(primary.target_calories, "kcal"));
+
+  // Activity time breakdown
   pushIfValue(rows, "High activity", formatMinutesFromSeconds(primary.high_activity_time));
   pushIfValue(rows, "Medium activity", formatMinutesFromSeconds(primary.medium_activity_time));
   pushIfValue(rows, "Low activity", formatMinutesFromSeconds(primary.low_activity_time));
+  pushIfValue(rows, "Sedentary time", formatMinutesFromSeconds(primary.sedentary_time));
+  pushIfValue(rows, "Resting time", formatMinutesFromSeconds(primary.resting_time));
+  pushIfValue(rows, "Non-wear time", formatMinutesFromSeconds(primary.non_wear_time));
+
+  // MET metrics (if available)
+  pushIfValue(rows, "High activity MET", formatNumber(primary.high_activity_met_minutes, "min"));
+  pushIfValue(rows, "Medium activity MET", formatNumber(primary.medium_activity_met_minutes, "min"));
+  pushIfValue(rows, "Low activity MET", formatNumber(primary.low_activity_met_minutes, "min"));
+
+  // Goals and alerts
+  pushIfValue(rows, "Target meters", formatDistance(primary.target_meters));
+  pushIfValue(rows, "Meters to target", formatDistance(primary.meters_to_target));
   pushIfValue(rows, "Inactivity alerts", formatNumber(primary.inactivity_alerts));
+
   return rows.length > 0 ? { text: "Activity", children: rows } : null;
 }
 
@@ -138,6 +222,14 @@ function buildWorkoutsNode(workouts: OuraWorkout[]): InputTextNode | null {
     text: formatWorkoutLine(workout),
   }));
   return { text: "Workouts", children: rows };
+}
+
+function buildTagsNode(tags: OuraTag[]): InputTextNode | null {
+  if (tags.length === 0) return null;
+  const rows = tags.map((tag) => ({
+    text: formatTagLine(tag),
+  }));
+  return { text: "Tags", children: rows };
 }
 
 function pushIfValue(collection: InputTextNode[], label: string, value?: string): void {
@@ -180,9 +272,76 @@ function formatWorkoutLine(workout: OuraWorkout): string {
   const distance = formatDistance(workout.distance);
   if (distance) parts.push(distance);
   if (workout.intensity) parts.push(workout.intensity);
-  const activity = workout.sport ?? "Workout";
+  if (workout.source) parts.push(`via ${workout.source}`);
+  // Use activity, sport, or label for the workout name
+  const activity = workout.activity ?? workout.sport ?? workout.label ?? "Workout";
+  const activityFormatted = formatActivityName(activity);
   const details = parts.length > 0 ? ` (${parts.join(", ")})` : "";
-  return `${startTime} – ${activity}${details}`;
+  return `${startTime} – ${activityFormatted}${details}`;
+}
+
+function formatActivityName(activity: string): string {
+  // Convert snake_case or camelCase to Title Case
+  return activity
+    .replace(/_/g, " ")
+    .replace(/([A-Z])/g, " $1")
+    .trim()
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function formatTagLine(tag: OuraTag): string {
+  // Use start_time for time display
+  const time = formatTagTime(tag.start_time) || formatTimestamp(tag.timestamp);
+
+  // Build tag display: use custom_name, tag_type_code, tags array, or text
+  let tagDisplay: string;
+  if (tag.custom_name) {
+    // Custom tag name (when tag_type_code is "custom")
+    tagDisplay = `[[${formatTagType(tag.custom_name)}]]`;
+  } else if (tag.tags && tag.tags.length > 0) {
+    // Multiple tags array
+    tagDisplay = tag.tags.map((t) => `[[${formatTagType(t)}]]`).join(" ");
+  } else if (tag.tag_type_code && tag.tag_type_code !== "custom") {
+    tagDisplay = `[[${formatTagType(tag.tag_type_code)}]]`;
+  } else if (tag.text) {
+    tagDisplay = `[[${formatTagType(tag.text)}]]`;
+  } else {
+    tagDisplay = "[[Tag]]";
+  }
+
+  // Add comment if present
+  const comment = tag.comment ? ` – ${tag.comment}` : "";
+  return time ? `${time} – ${tagDisplay}${comment}` : `${tagDisplay}${comment}`;
+}
+
+function formatTagTime(timeStr?: string): string {
+  if (!timeStr) return "";
+  // start_time is in format "HH:MM:SS" or "HH:MM:SS+00:00"
+  const match = timeStr.match(/^(\d{2}):(\d{2})/);
+  if (!match) return "";
+  return `${match[1]}:${match[2]}`;
+}
+
+function formatTimestamp(timestamp?: string): string {
+  if (!timestamp) return "";
+  // timestamp is in ISO format "2025-11-30T14:30:00+00:00"
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatTagType(code?: string): string {
+  if (!code) return "Tag";
+  // Convert snake_case to Title Case (e.g., "tag_generic_nocaffeine" -> "No Caffeine")
+  const cleaned = code
+    .replace(/^tag_(generic_)?/, "")
+    .replace(/_/g, " ");
+  return cleaned
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function calculateDuration(start?: string, end?: string): string | undefined {
@@ -226,4 +385,10 @@ function formatDistance(meters?: number): string | undefined {
   if (meters === undefined || Number.isNaN(meters)) return undefined;
   const km = meters / 1000;
   return `${km.toFixed(2)} km`;
+}
+
+function formatTemperature(deviation?: number): string | undefined {
+  if (deviation === undefined || Number.isNaN(deviation)) return undefined;
+  const sign = deviation >= 0 ? "+" : "";
+  return `${sign}${deviation.toFixed(2)}°C`;
 }
