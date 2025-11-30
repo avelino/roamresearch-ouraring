@@ -1,7 +1,7 @@
 import "./polyfills";
 
 import { writeDailyOuraPage } from "./blocks";
-import { fetchDailyData } from "./ouraring";
+import { fetchAllDailyData } from "./ouraring";
 import {
   initializeSettings,
   readSettings,
@@ -88,6 +88,7 @@ function onunload(): void {
   settingsHandle = null;
   extensionAPIRef = null;
   initialized = false;
+  syncInProgress = false;
   logInfo("Oura integration unloaded");
 }
 
@@ -126,9 +127,16 @@ async function syncOura(trigger: "manual" | "auto") {
 
   try {
     const dates = buildDateRange(settings.daysToSync);
+
+    // Fetch all data in batch (max 7 days per request) - more efficient than day by day
+    const allData = await fetchAllDailyData(settings.token, dates, settings.proxyUrl);
+
+    // Write pages for each date (most recent first)
     for (const date of dates) {
-      const data = await fetchDailyData(settings.token, date, settings.corsProxyUrl);
-      await writeDailyOuraPage(settings.pagePrefix, data);
+      const data = allData.get(date);
+      if (data) {
+        await writeDailyOuraPage(settings.pagePrefix, data);
+      }
     }
 
     if (trigger === "manual") {
@@ -136,7 +144,7 @@ async function syncOura(trigger: "manual" | "auto") {
     } else {
       logInfo("automatic sync completed");
     }
-    logDebug("sync_completed", { dates });
+    logDebug("sync_completed", { dates, totalData: allData.size });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logError("failed to sync", error);

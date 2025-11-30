@@ -8,7 +8,7 @@ Project Snapshot
 - Interacts with the Roam runtime via direct `roamAlphaAPI` calls for UI and page mutations; communicates with Oura Cloud API v2 via HTTPS.
 - Configuration is managed via Roam Depot → Extension Settings → "Oura Ring". Defaults are applied on first load; respect user edits and persist values using `extensionAPI.settings`. Falls back to config page `roam/js/ouraring` when settings panel is unavailable.
 - Data is organized in daily pages: `{pagePrefix}/YYYY-MM-DD`. Dates displayed follow the Roam daily note pattern (`MMMM Do, YYYY` – e.g., "November 29th, 2025").
-- Each page contains sections for Sleep, Readiness, Activity, Heart rate, and Workouts (omitted when empty).
+- Each page contains sections for Sleep, Readiness, Activity, Heart rate, Workouts, and Tags (omitted when empty).
 
 ## Environment & Tooling
 
@@ -45,26 +45,37 @@ Module Details
 
 ### ouraring.ts
 
-- `fetchDailyData`: Fetches all Oura data for a given date (sleep, readiness, activity, workouts, heart rate) in parallel. Accepts optional `corsProxyUrl` parameter.
-- `fetchCollection<T>`: Generic cursor-based pagination for Oura Cloud API endpoints. Routes requests through CORS proxy when configured.
-- `buildProxiedUrl`: Wraps API URLs with CORS proxy prefix when configured (e.g., `https://corsproxy.io/?<encoded_url>`).
+- `fetchAllDailyData`: Main entry point for fetching Oura data. Fetches data for multiple dates using batch requests (max 7 days per request). Returns a Map of date → DailyOuraData.
+- `fetchBatchData`: Fetches all Oura data for a date range in batch. More efficient than day-by-day fetching and avoids API issues with single-day queries.
+- `splitDatesIntoChunks`: Splits an array of dates into chunks of maximum 7 days for batch processing.
+- `groupDataByDate`: Groups raw batch API response data by date, creating DailyOuraData for each day.
+- `fetchCollection<T>`: Generic cursor-based pagination for Oura Cloud API endpoints. Routes requests through `{proxyUrl}{encodedOuraUrl}` (corsproxy.io format: `https://corsproxy.io/?url={encoded}`).
 - `formatMinutesFromSeconds`: Converts seconds to human-readable duration (e.g., "7h 32m").
 - `summarizeHeartRate`: Computes min/max/average from heart rate samples.
-- Interfaces: `OuraSleep`, `OuraReadiness`, `OuraActivity`, `OuraHeartRateSample`, `OuraWorkout`, `DailyOuraData`.
+- Interfaces (based on Oura API v2 and [training-personal-data](https://github.com/avelino/training-personal-data) Clojure implementation):
+  - `OuraSleepContributors`: Sleep quality contributor scores (deep_sleep, efficiency, latency, rem_sleep, restfulness, timing, total_sleep).
+  - `OuraSleep`: Full sleep data including stages (deep, REM, light, awake), HRV, latency, and contributors.
+  - `OuraReadinessContributors`: Readiness contributor scores (activity_balance, body_temperature, hrv_balance, etc.).
+  - `OuraReadiness`: Readiness data with temperature deviation/trend and contributors.
+  - `OuraActivity`: Activity data with movement metrics, calorie tracking, time breakdown (high/medium/low/sedentary/resting), MET metrics, and goal tracking.
+  - `OuraHeartRateSample`: Heart rate sample with bpm, source, and timestamp.
+  - `OuraWorkout`: Workout data with activity, sport, label, intensity, calories, distance, and source.
+  - `OuraTag`: Enhanced tag from `/enhanced_tag` endpoint with custom_name and tags array support. Note: `/tag` endpoint is deprecated.
+  - `DailyOuraData`: Aggregated daily data container.
 
 ### blocks.ts
 
 - `writeDailyOuraPage`: Creates or updates a page for a given date with Oura data.
 - `buildHeaderNode`: Constructs the main block with `#ouraring [[Date]]` header and section children.
-- Section builders: `buildSleepNode`, `buildReadinessNode`, `buildActivityNode`, `buildHeartRateNode`, `buildWorkoutsNode`.
-- Formatting utilities: `formatNumber`, `formatPercentage`, `formatHeartRate`, `formatBedtime`, `formatTime`, `formatDistance`, `formatDailyNoteDate`, `formatOrdinal`.
+- Section builders: `buildSleepNode`, `buildReadinessNode`, `buildActivityNode`, `buildHeartRateNode`, `buildWorkoutsNode`, `buildTagsNode`.
+- Formatting utilities: `formatNumber`, `formatPercentage`, `formatHeartRate`, `formatBedtime`, `formatTime`, `formatTimestamp`, `formatDistance`, `formatTemperature`, `formatDailyNoteDate`, `formatOrdinal`, `formatTagLine`, `formatTagTime`, `formatTagType`, `formatActivityName`, `formatWorkoutLine`.
 
 ### settings.ts
 
 - Roam API wrappers: `getBasicTreeByParentUid`, `getPageUidByPageTitle`, `createPage`, `createBlock`, `deleteBlock`.
 - `initializeSettings`: Detects settings panel support; registers panel or creates config page.
 - `readSettings`: Returns `SettingsSnapshot` from panel or page-based config.
-- Settings keys: `ouraring_token`, `page_prefix`, `days_to_sync`, `enable_debug_logs`, `cors_proxy_url`.
+- Settings keys: `ouraring_token`, `page_prefix`, `days_to_sync`, `enable_debug_logs`, `proxy_url`.
 - `MUTATION_DELAY_MS`: 100ms throttle between Roam mutations (respects rate limits).
 - `yieldToMain()`: Yields control back to browser main thread during sync operations, preventing UI blocking.
 - `YIELD_BATCH_SIZE`: Number of operations (default: 3) to process before yielding to main thread.
@@ -84,8 +95,7 @@ Module Details
 ### constants.ts
 
 - API URL: `OURA_API_BASE` (v2 usercollection endpoint).
-- Default values: page prefix (`ouraring`), config page title (`roam/js/ouraring`), CORS proxy (`corsproxy.io`).
-- `DEFAULT_CORS_PROXY`: Default CORS proxy URL prefix for bypassing browser CORS restrictions.
+- Default values: page prefix (`ouraring`), config page title (`roam/js/ouraring`).
 - UI constants: command label, topbar button ID/icon.
 - Pattern: `ISO_DATE_PATTERN` for validating date strings.
 
@@ -115,38 +125,79 @@ Development Conventions
 
 Block Structure
 
-Daily pages are written with the following structure:
+Daily pages are written with the following structure (fields shown when data is available):
 
 ```
 #ouraring [[November 29th, 2025]]
   Sleep
     Score: 85
-    Efficiency: 92%
+    Bedtime: 22:30 – 06:45
     Total sleep: 7h 32m
     Time in bed: 8h 15m
+    Deep sleep: 1h 45m
+    REM sleep: 2h 10m
+    Light sleep: 3h 37m
+    Awake time: 25m
+    Efficiency: 92%
+    Latency: 8m
+    Restless periods: 3
     Avg HR: 52 bpm avg / min 48
-    Bedtime: 22:30 – 06:45
+    Avg HRV: 45 ms
+    Contributors
+      Deep sleep: 85
+      Efficiency: 90
+      Latency: 88
+      REM sleep: 82
+      Restfulness: 78
+      Timing: 95
+      Total sleep: 88
   Readiness
     Score: 78
+    Temperature deviation: +0.15°C
+    Temperature trend: -0.05°C
     Activity balance: 82
     Sleep balance: 75
     Recovery index: 80
-    Resting HR: 48 bpm
+    Resting HR: 48
     HRV balance: 72
+    Contributors
+      Activity balance: 85
+      Body temperature: 90
+      HRV balance: 75
+      Previous day activity: 82
+      Previous night: 88
+      Recovery index: 80
+      Resting heart rate: 78
+      Sleep balance: 75
   Activity
     Score: 90
     Steps: 8543
+    Daily movement: 5.20 km
+    Distance: 6.82 km
     Active calories: 450 kcal
     Total calories: 2100 kcal
-    Distance: 6.82 km
+    Target calories: 2000 kcal
     High activity: 45m
     Medium activity: 1h 20m
     Low activity: 3h 15m
+    Sedentary time: 8h 30m
+    Resting time: 7h 45m
+    Non-wear time: 1h 30m
+    High activity MET: 120 min
+    Medium activity MET: 180 min
+    Low activity MET: 360 min
+    Target meters: 8000.00 km
+    Meters to target: 1180.00 km
+    Inactivity alerts: 2
   Heart rate
     62 bpm avg / min 48 / max 145
   Workouts
-    07:30 – Running (45m, 320 kcal, 5.20 km, moderate)
+    07:30 – Running (45m, 320 kcal, 5.20 km, moderate, via manual)
     18:00 – Cycling (1h 10m, 450 kcal, high)
+  Tags
+    22:00 – [[No Caffeine]]
+    08:30 – [[Meditation]] – 15 min session
+    [[Sleep]] [[Focus]]
 ```
 
 Error Handling & Logging
@@ -159,7 +210,7 @@ Error Handling & Logging
 Performance
 
 - **Never block the UI thread**: use `yieldToMain()` periodically during sync operations to allow user input and UI updates.
-- Fetch Oura resources in parallel (`Promise.all`) for all five data types per date.
+- Fetch Oura resources in parallel (`Promise.all`) for all six data types per date (sleep, readiness, activity, heart rate, workouts, enhanced_tag).
 - Respect Roam mutation rate limit: use `MUTATION_DELAY_MS` (100ms) between API calls.
 
 Security & Privacy
@@ -176,7 +227,7 @@ Settings Reference
 | Page Prefix | `page_prefix` | `ouraring` | Prefix for daily pages; pages saved to `prefix/YYYY-MM-DD` |
 | Days to Sync | `days_to_sync` | `7` | How many past days to fetch (includes today) |
 | Enable Debug Logs | `enable_debug_logs` | `false` | Show debug logs in browser console |
-| CORS Proxy URL | `cors_proxy_url` | `https://corsproxy.io/?` | Proxy URL to bypass CORS restrictions; leave empty to disable |
+| Proxy URL | `proxy_url` | `https://corsproxy.io/?url=` | CORS proxy URL; routes API requests through proxy to bypass browser restrictions (default: corsproxy.io) |
 
 Review Checklist
 
