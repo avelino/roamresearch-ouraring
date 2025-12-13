@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/avelino/roamresearch-ouraring/compare/v1.0.0...v1.1.0) (2025-12-13)
+
+
+### Features
+
+* use Roam native CORS proxy and add build.sh for Roam Depot ([6f2becf](https://github.com/avelino/roamresearch-ouraring/commit/6f2becfb44fa0b5c624bdd77a65178fd5ec1eaa1))
+
 # 1.0.0 (2025-11-30)
 
 
