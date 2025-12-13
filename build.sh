@@ -11,3 +11,4 @@ npx pnpm install
 npx pnpm build
 
 echo "Build complete: extension.js"
+
