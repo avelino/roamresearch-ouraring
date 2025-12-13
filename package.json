@@ -1,6 +1,6 @@
 {
   "name": "roam-ouraring",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Roam Research extension that imports Oura Ring data into daily pages.",
   "type": "module",
   "main": "dist-ouraring/extension.js",

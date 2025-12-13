@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/avelino/roamresearch-ouraring/compare/v1.1.0...v1.2.0) (2025-12-13)
+
+
+### Features
+
+* **constants:** update topbar icon to 'ring' for Oura branding ([11c3ce5](https://github.com/avelino/roamresearch-ouraring/commit/11c3ce516fc53a42ab4c7f56c394f7b3017060b0))
+
 # [1.1.0](https://github.com/avelino/roamresearch-ouraring/compare/v1.0.0...v1.1.0) (2025-12-13)
 
 
