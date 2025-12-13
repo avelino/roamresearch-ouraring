@@ -14,7 +14,7 @@ Project Snapshot
 
 - Package manager: pnpm (`npx pnpm ...`); lockfile `pnpm-lock.yaml`.
 - Install deps before running scripts: `npx pnpm install`.
-- Build command: `npx pnpm build` (runs `tsc` then `vite build` producing `dist-ouraring/extension.js`).
+- Build command: `npx pnpm build` (runs `tsc` then `vite build` producing `extension.js` at project root).
 - Lint command: `npx pnpm lint` (uses ESLint with TypeScript support).
 - Check command: `npx pnpm check` (runs lint + build in sequence).
 - Target Node version matches CI (`actions/setup-node@v3`) using Node 20.8+. Avoid APIs unavailable in that runtime.
@@ -49,7 +49,7 @@ Module Details
 - `fetchBatchData`: Fetches all Oura data for a date range in batch. More efficient than day-by-day fetching and avoids API issues with single-day queries.
 - `splitDatesIntoChunks`: Splits an array of dates into chunks of maximum 7 days for batch processing.
 - `groupDataByDate`: Groups raw batch API response data by date, creating DailyOuraData for each day.
-- `fetchCollection<T>`: Generic cursor-based pagination for Oura Cloud API endpoints. Routes requests through `{proxyUrl}{encodedOuraUrl}` (corsproxy.io format: `https://corsproxy.io/?url={encoded}`).
+- `fetchCollection<T>`: Generic cursor-based pagination for Oura Cloud API endpoints. Routes requests through Roam's native CORS proxy (`roamAlphaAPI.constants.corsAnywhereProxyUrl`).
 - `formatMinutesFromSeconds`: Converts seconds to human-readable duration (e.g., "7h 32m").
 - `summarizeHeartRate`: Computes min/max/average from heart rate samples.
 - Interfaces (based on Oura API v2 and [training-personal-data](https://github.com/avelino/training-personal-data) Clojure implementation):
@@ -76,7 +76,7 @@ Module Details
 - Roam API wrappers: `getBasicTreeByParentUid`, `getPageUidByPageTitle`, `createPage`, `createBlock`, `deleteBlock`.
 - `initializeSettings`: Detects settings panel support; registers panel or creates config page.
 - `readSettings`: Returns `SettingsSnapshot` from panel or page-based config.
-- Settings keys: `ouraring_token`, `page_prefix`, `days_to_sync`, `enable_debug_logs`, `proxy_url`.
+- Settings keys: `ouraring_token`, `page_prefix`, `days_to_sync`, `enable_debug_logs`.
 - `MUTATION_DELAY_MS`: 100ms throttle between Roam mutations (respects rate limits).
 - `yieldToMain()`: Yields control back to browser main thread during sync operations, preventing UI blocking.
 - `YIELD_BATCH_SIZE`: Number of operations (default: 3) to process before yielding to main thread.
@@ -228,7 +228,8 @@ Settings Reference
 | Page Prefix | `page_prefix` | `ouraring` | Prefix for daily pages; pages saved to `prefix/YYYY-MM-DD` |
 | Days to Sync | `days_to_sync` | `7` | How many past days to fetch (includes today) |
 | Enable Debug Logs | `enable_debug_logs` | `false` | Show debug logs in browser console |
-| Proxy URL | `proxy_url` | `https://corsproxy.io/?url=` | CORS proxy URL; routes API requests through proxy to bypass browser restrictions (default: corsproxy.io) |
+
+> **CORS Proxy**: The extension uses Roam's native CORS proxy (`roamAlphaAPI.constants.corsAnywhereProxyUrl`) to bypass browser restrictions when calling the Oura API. This proxy is hosted by the Roam team and only works from Roam domains.
 
 Review Checklist
 

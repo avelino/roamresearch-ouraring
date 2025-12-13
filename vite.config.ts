@@ -8,11 +8,11 @@ export default defineConfig({
     global: "window",
   },
   build: {
-    outDir: "dist-ouraring",
+    outDir: ".",
     target: "esnext",
     minify: "esbuild",
     sourcemap: true,
-    emptyOutDir: true,
+    emptyOutDir: false,
     lib: {
       entry: resolve(__dirname, "src/main.ts"),
       name: "RoamOuraRing",

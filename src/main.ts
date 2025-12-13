@@ -129,7 +129,7 @@ async function syncOura(trigger: "manual" | "auto") {
     const dates = buildDateRange(settings.daysToSync);
 
     // Fetch all data in batch (max 7 days per request) - more efficient than day by day
-    const allData = await fetchAllDailyData(settings.token, dates, settings.proxyUrl);
+    const allData = await fetchAllDailyData(settings.token, dates);
 
     // Write pages for each date (most recent first)
     for (const date of dates) {

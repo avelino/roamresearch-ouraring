@@ -2,6 +2,19 @@ import { OURA_API_BASE } from "./constants";
 import { logDebug, logError, logInfo } from "./logger";
 
 /**
+ * Gets the CORS proxy URL from Roam's native API.
+ * Uses roamAlphaAPI.constants.corsAnywhereProxyUrl which is hosted by the Roam team.
+ * @see https://roamresearch.com/#/app/developer-documentation/page/TuLoib22N
+ */
+function getRoamProxyUrl(): string {
+  const proxyUrl = window.roamAlphaAPI?.constants?.corsAnywhereProxyUrl;
+  if (!proxyUrl) {
+    throw new Error("Roam CORS proxy URL not available. Make sure you are running in Roam Research.");
+  }
+  return proxyUrl;
+}
+
+/**
  * Sleep contributors breakdown from Oura API.
  * Contains individual scores for each sleep quality factor.
  */
@@ -219,32 +232,29 @@ export function splitDatesIntoChunks(dates: string[], maxSize: number = MAX_DAYS
  * @param token - Oura Personal Access Token
  * @param startDate - Start date (YYYY-MM-DD)
  * @param endDate - End date (YYYY-MM-DD)
- * @param proxyUrl - CORS proxy URL to route requests through
  */
 export async function fetchBatchData(
   token: string,
   startDate: string,
-  endDate: string,
-  proxyUrl: string
+  endDate: string
 ): Promise<BatchOuraData> {
   logDebug("fetch_batch_start", { startDate, endDate });
 
   const [sleep, readiness, activity, workouts, heartrate, tags] = await Promise.all([
-    fetchCollection<OuraSleep>("/daily_sleep", { start_date: startDate, end_date: endDate }, token, proxyUrl),
-    fetchCollection<OuraReadiness>("/daily_readiness", { start_date: startDate, end_date: endDate }, token, proxyUrl),
-    fetchCollection<OuraActivity>("/daily_activity", { start_date: startDate, end_date: endDate }, token, proxyUrl),
-    fetchCollection<OuraWorkout>("/workout", { start_date: startDate, end_date: endDate }, token, proxyUrl),
+    fetchCollection<OuraSleep>("/daily_sleep", { start_date: startDate, end_date: endDate }, token),
+    fetchCollection<OuraReadiness>("/daily_readiness", { start_date: startDate, end_date: endDate }, token),
+    fetchCollection<OuraActivity>("/daily_activity", { start_date: startDate, end_date: endDate }, token),
+    fetchCollection<OuraWorkout>("/workout", { start_date: startDate, end_date: endDate }, token),
     fetchCollection<OuraHeartRateSample>(
       "/heartrate",
       {
         start_datetime: `${startDate}T00:00:00Z`,
         end_datetime: `${endDate}T23:59:59Z`,
       },
-      token,
-      proxyUrl
+      token
     ),
     // Note: /tag endpoint is deprecated, using only /enhanced_tag
-    fetchCollection<OuraTag>("/enhanced_tag", { start_date: startDate, end_date: endDate }, token, proxyUrl),
+    fetchCollection<OuraTag>("/enhanced_tag", { start_date: startDate, end_date: endDate }, token),
   ]);
 
   logDebug("fetch_batch_complete", {
@@ -343,14 +353,13 @@ function extractDateFromTimestamp(timestamp?: string): string | undefined {
 /**
  * Fetches all Oura data for multiple dates, using batch requests (max 7 days each).
  * This is the main entry point for fetching Oura data.
+ * Uses Roam's native CORS proxy (roamAlphaAPI.constants.corsAnywhereProxyUrl).
  * @param token - Oura Personal Access Token
  * @param dates - Array of dates to fetch (YYYY-MM-DD), most recent first
- * @param proxyUrl - CORS proxy URL to route requests through
  */
 export async function fetchAllDailyData(
   token: string,
-  dates: string[],
-  proxyUrl: string
+  dates: string[]
 ): Promise<Map<string, DailyOuraData>> {
   if (dates.length === 0) {
     return new Map();
@@ -368,7 +377,7 @@ export async function fetchAllDailyData(
     const startDate = chunk[0];
     const endDate = chunk[chunk.length - 1];
 
-    const batchData = await fetchBatchData(token, startDate, endDate, proxyUrl);
+    const batchData = await fetchBatchData(token, startDate, endDate);
     const groupedData = groupDataByDate(batchData, chunk);
 
     // Merge into results
@@ -383,34 +392,27 @@ export async function fetchAllDailyData(
 }
 
 /**
- * Builds the proxied URL for corsproxy.io or similar CORS proxies.
- * corsproxy.io format: https://corsproxy.io/?url={encoded_url}
- * @param proxyUrl - The proxy base URL (e.g., "https://corsproxy.io/?url=")
+ * Builds the proxied URL using Roam's native CORS proxy.
+ * Format: {proxyUrl}/{targetUrl}
+ * @see https://roamresearch.com/#/app/developer-documentation/page/TuLoib22N
  * @param targetUrl - The target URL to proxy
  */
-function buildProxiedUrl(proxyUrl: string, targetUrl: string): string {
-  // corsproxy.io expects: https://corsproxy.io/?url={encoded_url}
-  // If proxy ends with "=" we just append the encoded URL (corsproxy.io style)
-  // Otherwise we append ?url= for custom proxies
-  if (proxyUrl.endsWith("=")) {
-    return `${proxyUrl}${encodeURIComponent(targetUrl)}`;
-  }
-  return `${proxyUrl}?url=${encodeURIComponent(targetUrl)}`;
+function buildProxiedUrl(targetUrl: string): string {
+  const proxyUrl = getRoamProxyUrl();
+  return `${proxyUrl}/${targetUrl}`;
 }
 
 /**
  * Fetches a paginated collection from the Oura API.
- * Routes requests through the CORS proxy (default: corsproxy.io).
+ * Routes requests through Roam's native CORS proxy.
  * @param path - API endpoint path (e.g., "/daily_sleep")
  * @param params - Query parameters
  * @param token - Oura Personal Access Token
- * @param proxyUrl - CORS proxy URL (default: corsproxy.io)
  */
 async function fetchCollection<T>(
   path: string,
   params: Record<string, string>,
-  token: string,
-  proxyUrl: string
+  token: string
 ): Promise<T[]> {
   const allItems: T[] = [];
   let nextToken: string | undefined;
@@ -421,7 +423,7 @@ async function fetchCollection<T>(
       searchParams.set("next_token", nextToken);
     }
     const ouraUrl = `${OURA_API_BASE}${path}?${searchParams.toString()}`;
-    const fetchUrl = buildProxiedUrl(proxyUrl, ouraUrl);
+    const fetchUrl = buildProxiedUrl(ouraUrl);
 
     logDebug("fetch_request", { url: fetchUrl, ouraUrl });
 

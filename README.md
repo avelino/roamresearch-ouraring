@@ -29,7 +29,7 @@ Pages are created as `ouraring/YYYY-MM-DD` with the header `#ouraring [[Month Do
 ### Manual Installation
 
 1. Build the extension: `pnpm install && pnpm build`
-2. Load `dist-ouraring/extension.js` via Roam's custom script loader
+2. Load `extension.js` via Roam's custom script loader
 
 ## Configuration
 
@@ -41,79 +41,14 @@ Open **Roam Depot → Extension Settings → Oura Ring** and configure:
 | **Page Prefix** | `ouraring` | Prefix for daily pages (pages saved as `prefix/YYYY-MM-DD`) |
 | **Days to Sync** | `7` | How many past days to fetch (includes today) |
 | **Enable Debug Logs** | `false` | Show detailed logs in browser console |
-| **CORS Proxy URL** | `https://corsproxy.io/?url=` | Proxy for API requests (see below) |
 
 If the settings panel is unavailable, the extension creates a fallback config page at `roam/js/ouraring`.
 
-## Why a CORS Proxy?
+## CORS Proxy
 
-**The Oura API doesn't include CORS headers**, which means browsers block direct requests from web applications like Roam Research. This is a security feature called [Same-Origin Policy](https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy).
+The Oura API doesn't include CORS headers, which means browsers block direct requests from web applications. This extension uses **Roam's native CORS proxy** (`roamAlphaAPI.constants.corsAnywhereProxyUrl`) to route API requests, adding the necessary headers automatically.
 
-To work around this limitation, this extension routes API requests through a CORS proxy that adds the necessary headers. The default proxy is [corsproxy.io](https://corsproxy.io), a free Cloudflare-powered service that works immediately without any setup.
-
-### How it works
-
-```
-Roam (browser) → corsproxy.io → api.ouraring.com → response → corsproxy.io → Roam
-```
-
-The proxy forwards your request to Oura's API and returns the response with proper CORS headers, allowing the browser to process it.
-
-### Security Considerations
-
-- Your Oura token is sent through the proxy to authenticate with Oura's API
-- corsproxy.io is open-source and Cloudflare-powered
-- The proxy only forwards requests; it doesn't store or log your data
-- If you prefer, you can deploy your own proxy (see below)
-
-### Custom Proxy (Optional)
-
-If you prefer full control over your data flow, deploy your own Cloudflare Worker:
-
-1. Create a free account at [Cloudflare Workers](https://workers.cloudflare.com/)
-2. Create a new Worker with this code:
-
-```javascript
-export default {
-  async fetch(request) {
-    const url = new URL(request.url);
-    const targetUrl = url.searchParams.get('url');
-
-    if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, OPTIONS',
-          'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-          'Access-Control-Max-Age': '86400',
-        },
-      });
-    }
-
-    if (!targetUrl || !targetUrl.startsWith('https://api.ouraring.com/')) {
-      return new Response('Invalid request', { status: 400 });
-    }
-
-    const response = await fetch(targetUrl, {
-      method: request.method,
-      headers: {
-        'Authorization': request.headers.get('Authorization') || '',
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const newHeaders = new Headers(response.headers);
-    newHeaders.set('Access-Control-Allow-Origin', '*');
-
-    return new Response(response.body, {
-      status: response.status,
-      headers: newHeaders,
-    });
-  },
-};
-```
-
-3. Deploy and update the extension setting to use your worker URL (format: `https://your-worker.workers.dev?url=`)
+This proxy is hosted by the Roam team and only works from Roam domains, ensuring security and reliability without any configuration required.
 
 ## Usage
 
@@ -167,7 +102,7 @@ pnpm lint
 pnpm check
 ```
 
-Output: `dist-ouraring/extension.js`
+Output: `extension.js` (at project root)
 
 ## Contributing
 

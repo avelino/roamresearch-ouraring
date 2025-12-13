@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Header block now displays sleep and readiness scores inline: `#ouraring [[Date]] sleep: X / readiness: Y` for quick overview without expanding sections.
+- Switched from external CORS proxy (corsproxy.io) to Roam's native CORS proxy (`roamAlphaAPI.constants.corsAnywhereProxyUrl`). This simplifies setup and removes the need for a configurable proxy URL setting.
+
+### Added
+
+- Added `build.sh` script for Roam Depot GitHub Action compatibility.
+
+### Removed
+
+- Removed `proxy_url` setting – the extension now automatically uses Roam's built-in CORS proxy, which is more reliable and requires no configuration.
 
 ## [1.0.0] - 2025-11-30
 
