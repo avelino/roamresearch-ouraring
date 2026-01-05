@@ -251,21 +251,21 @@ function pushIfValue(collection: InputTextNode[], label: string, value?: string)
   }
 }
 
-function formatNumber(value?: number, suffix?: string): string | undefined {
-  if (value === undefined || Number.isNaN(value)) return undefined;
+function formatNumber(value?: number | null, suffix?: string): string | undefined {
+  if (value == null || Number.isNaN(value)) return undefined;
   return suffix ? `${value} ${suffix}` : `${value}`;
 }
 
-function formatPercentage(value?: number): string | undefined {
-  if (value === undefined || Number.isNaN(value)) return undefined;
+function formatPercentage(value?: number | null): string | undefined {
+  if (value == null || Number.isNaN(value)) return undefined;
   return `${value}%`;
 }
 
-function formatHeartRate(avg?: number, min?: number): string | undefined {
-  if (avg === undefined && min === undefined) return undefined;
+function formatHeartRate(avg?: number | null, min?: number | null): string | undefined {
+  if (avg == null && min == null) return undefined;
   const parts: string[] = [];
-  if (avg !== undefined) parts.push(`${avg} bpm avg`);
-  if (min !== undefined) parts.push(`min ${min}`);
+  if (avg != null) parts.push(`${avg} bpm avg`);
+  if (min != null) parts.push(`min ${min}`);
   return parts.join(" / ");
 }
 
@@ -394,14 +394,14 @@ function formatOrdinal(day: number): string {
   }
 }
 
-function formatDistance(meters?: number): string | undefined {
-  if (meters === undefined || Number.isNaN(meters)) return undefined;
+function formatDistance(meters?: number | null): string | undefined {
+  if (meters == null || Number.isNaN(meters)) return undefined;
   const km = meters / 1000;
   return `${km.toFixed(2)} km`;
 }
 
-function formatTemperature(deviation?: number): string | undefined {
-  if (deviation === undefined || Number.isNaN(deviation)) return undefined;
+function formatTemperature(deviation?: number | null): string | undefined {
+  if (deviation == null || Number.isNaN(deviation)) return undefined;
   const sign = deviation >= 0 ? "+" : "";
   return `${sign}${deviation.toFixed(2)}°C`;
 }

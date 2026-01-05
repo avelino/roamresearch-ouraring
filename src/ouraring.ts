@@ -455,8 +455,8 @@ async function fetchCollection<T>(
   return allItems;
 }
 
-export function formatMinutesFromSeconds(seconds?: number): string | undefined {
-  if (seconds === undefined || Number.isNaN(seconds)) return undefined;
+export function formatMinutesFromSeconds(seconds?: number | null): string | undefined {
+  if (seconds == null || Number.isNaN(seconds)) return undefined;
   const totalMinutes = Math.round(seconds / 60);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
