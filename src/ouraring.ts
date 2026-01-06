@@ -1,5 +1,6 @@
-import { OURA_API_BASE } from "./constants";
+import { MAX_DAYS_PER_REQUEST, OURA_API_BASE } from "./constants";
 import { logDebug, logError, logInfo } from "./logger";
+import { extractDateFromTimestamp, isValidNumber } from "./utils";
 
 /**
  * Gets the CORS proxy URL from Roam's native API.
@@ -210,9 +211,6 @@ interface CollectionResponse<T> {
   next_token?: string;
 }
 
-/** Maximum days per API request to avoid issues with single-day queries */
-const MAX_DAYS_PER_REQUEST = 7;
-
 /**
  * Splits an array of dates into chunks of maximum size.
  * @param dates - Array of date strings (YYYY-MM-DD)
@@ -272,6 +270,24 @@ export async function fetchBatchData(
 }
 
 /**
+ * Groups items by date using a date extractor function.
+ */
+function groupItemsByDate<T>(
+  items: T[],
+  result: Map<string, DailyOuraData>,
+  getDate: (item: T) => string | undefined,
+  getArray: (data: DailyOuraData) => T[]
+): void {
+  for (const item of items) {
+    const day = getDate(item);
+    if (day) {
+      const data = result.get(day);
+      if (data) getArray(data).push(item);
+    }
+  }
+}
+
+/**
  * Groups batch data by date, creating DailyOuraData for each requested date.
  * @param batchData - Raw batch data from API
  * @param dates - Array of dates to group by (YYYY-MM-DD)
@@ -292,63 +308,17 @@ export function groupDataByDate(batchData: BatchOuraData, dates: string[]): Map<
     });
   }
 
-  // Group sleep by day
-  for (const item of batchData.sleep) {
-    const data = result.get(item.day);
-    if (data) data.sleep.push(item);
-  }
-
-  // Group readiness by day
-  for (const item of batchData.readiness) {
-    const data = result.get(item.day);
-    if (data) data.readiness.push(item);
-  }
-
-  // Group activity by day
-  for (const item of batchData.activity) {
-    const data = result.get(item.day);
-    if (data) data.activity.push(item);
-  }
-
-  // Group workouts by day
-  for (const item of batchData.workouts) {
-    const day = item.day ?? extractDateFromTimestamp(item.start_datetime);
-    if (day) {
-      const data = result.get(day);
-      if (data) data.workouts.push(item);
-    }
-  }
-
-  // Group heart rate by timestamp date
-  for (const item of batchData.heartrate) {
-    const day = extractDateFromTimestamp(item.timestamp);
-    if (day) {
-      const data = result.get(day);
-      if (data) data.heartrate.push(item);
-    }
-  }
-
-  // Group tags by day (use start_day or day field)
-  for (const item of batchData.tags) {
-    const day = item.start_day ?? item.day ?? extractDateFromTimestamp(item.timestamp);
-    if (day) {
-      const data = result.get(day);
-      if (data) data.tags.push(item);
-    }
-  }
+  // Group all data types by their respective date fields
+  groupItemsByDate(batchData.sleep, result, (item) => item.day, (data) => data.sleep);
+  groupItemsByDate(batchData.readiness, result, (item) => item.day, (data) => data.readiness);
+  groupItemsByDate(batchData.activity, result, (item) => item.day, (data) => data.activity);
+  groupItemsByDate(batchData.workouts, result, (item) => item.day ?? extractDateFromTimestamp(item.start_datetime), (data) => data.workouts);
+  groupItemsByDate(batchData.heartrate, result, (item) => extractDateFromTimestamp(item.timestamp), (data) => data.heartrate);
+  groupItemsByDate(batchData.tags, result, (item) => item.start_day ?? item.day ?? extractDateFromTimestamp(item.timestamp), (data) => data.tags);
 
   return result;
 }
 
-/**
- * Extracts date (YYYY-MM-DD) from an ISO timestamp string.
- * @param timestamp - ISO timestamp (e.g., "2025-10-29T14:30:00.000-03:00")
- */
-function extractDateFromTimestamp(timestamp?: string): string | undefined {
-  if (!timestamp) return undefined;
-  const match = timestamp.match(/^(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : undefined;
-}
 
 /**
  * Fetches all Oura data for multiple dates, using batch requests (max 7 days each).
@@ -455,23 +425,12 @@ async function fetchCollection<T>(
   return allItems;
 }
 
-export function formatMinutesFromSeconds(seconds?: number | null): string | undefined {
-  if (seconds == null || Number.isNaN(seconds)) return undefined;
-  const totalMinutes = Math.round(seconds / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours > 0) {
-    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-  return `${minutes}m`;
-}
-
 export function summarizeHeartRate(samples: OuraHeartRateSample[]): {
   min?: number;
   max?: number;
   average?: number;
 } {
-  const values = samples.map((sample) => sample.bpm).filter((value): value is number => typeof value === "number");
+  const values = samples.map((sample) => sample.bpm).filter(isValidNumber);
   if (values.length === 0) {
     return {};
   }
