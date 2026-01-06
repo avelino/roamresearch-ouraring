@@ -9,8 +9,23 @@ import {
 import { DEFAULT_PAGE_PREFIX, ISO_DATE_PATTERN } from "./constants";
 import { logDebug, logWarn } from "./logger";
 import {
-  DailyOuraData,
+  calculateDuration,
+  formatActivityName,
+  formatBedtime,
+  formatDailyNoteDate,
+  formatDistance,
+  formatHeartRate,
   formatMinutesFromSeconds,
+  formatNumber,
+  formatPercentage,
+  formatTagTime,
+  formatTagType,
+  formatTemperature,
+  formatTime,
+  formatTimestamp,
+} from "./formatters";
+import {
+  DailyOuraData,
   OuraActivity,
   OuraHeartRateSample,
   OuraReadiness,
@@ -251,31 +266,6 @@ function pushIfValue(collection: InputTextNode[], label: string, value?: string)
   }
 }
 
-function formatNumber(value?: number | null, suffix?: string): string | undefined {
-  if (value == null || Number.isNaN(value)) return undefined;
-  return suffix ? `${value} ${suffix}` : `${value}`;
-}
-
-function formatPercentage(value?: number | null): string | undefined {
-  if (value == null || Number.isNaN(value)) return undefined;
-  return `${value}%`;
-}
-
-function formatHeartRate(avg?: number | null, min?: number | null): string | undefined {
-  if (avg == null && min == null) return undefined;
-  const parts: string[] = [];
-  if (avg != null) parts.push(`${avg} bpm avg`);
-  if (min != null) parts.push(`min ${min}`);
-  return parts.join(" / ");
-}
-
-function formatBedtime(start?: string, end?: string): string | undefined {
-  if (!start && !end) return undefined;
-  const startLabel = start ? formatTime(start) : "";
-  const endLabel = end ? formatTime(end) : "";
-  return `${startLabel}${startLabel && endLabel ? " – " : ""}${endLabel}`;
-}
-
 function formatWorkoutLine(workout: OuraWorkout): string {
   const startTime = formatTime(workout.start_datetime);
   const duration = calculateDuration(workout.start_datetime, workout.end_datetime);
@@ -286,35 +276,19 @@ function formatWorkoutLine(workout: OuraWorkout): string {
   if (distance) parts.push(distance);
   if (workout.intensity) parts.push(workout.intensity);
   if (workout.source) parts.push(`via ${workout.source}`);
-  // Use activity, sport, or label for the workout name
   const activity = workout.activity ?? workout.sport ?? workout.label ?? "Workout";
   const activityFormatted = formatActivityName(activity);
   const details = parts.length > 0 ? ` (${parts.join(", ")})` : "";
   return `${startTime} – ${activityFormatted}${details}`;
 }
 
-function formatActivityName(activity: string): string {
-  // Convert snake_case or camelCase to Title Case
-  return activity
-    .replace(/_/g, " ")
-    .replace(/([A-Z])/g, " $1")
-    .trim()
-    .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
-}
-
 function formatTagLine(tag: OuraTag): string {
-  // Use start_time for time display
   const time = formatTagTime(tag.start_time) || formatTimestamp(tag.timestamp);
 
-  // Build tag display: use custom_name, tag_type_code, tags array, or text
   let tagDisplay: string;
   if (tag.custom_name) {
-    // Custom tag name (when tag_type_code is "custom")
     tagDisplay = `[[${formatTagType(tag.custom_name)}]]`;
   } else if (tag.tags && tag.tags.length > 0) {
-    // Multiple tags array
     tagDisplay = tag.tags.map((t) => `[[${formatTagType(t)}]]`).join(" ");
   } else if (tag.tag_type_code && tag.tag_type_code !== "custom") {
     tagDisplay = `[[${formatTagType(tag.tag_type_code)}]]`;
@@ -324,84 +298,6 @@ function formatTagLine(tag: OuraTag): string {
     tagDisplay = "[[Tag]]";
   }
 
-  // Add comment if present
   const comment = tag.comment ? ` – ${tag.comment}` : "";
   return time ? `${time} – ${tagDisplay}${comment}` : `${tagDisplay}${comment}`;
-}
-
-function formatTagTime(timeStr?: string): string {
-  if (!timeStr) return "";
-  // start_time is in format "HH:MM:SS" or "HH:MM:SS+00:00"
-  const match = timeStr.match(/^(\d{2}):(\d{2})/);
-  if (!match) return "";
-  return `${match[1]}:${match[2]}`;
-}
-
-function formatTimestamp(timestamp?: string): string {
-  if (!timestamp) return "";
-  // timestamp is in ISO format "2025-11-30T14:30:00+00:00"
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatTagType(code?: string): string {
-  if (!code) return "Tag";
-  // Convert snake_case to Title Case (e.g., "tag_generic_nocaffeine" -> "No Caffeine")
-  const cleaned = code
-    .replace(/^tag_(generic_)?/, "")
-    .replace(/_/g, " ");
-  return cleaned
-    .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
-}
-
-function calculateDuration(start?: string, end?: string): string | undefined {
-  if (!start || !end) return undefined;
-  const startTime = Date.parse(start);
-  const endTime = Date.parse(end);
-  if (Number.isNaN(startTime) || Number.isNaN(endTime)) return undefined;
-  return formatMinutesFromSeconds(Math.max(0, (endTime - startTime) / 1000));
-}
-
-function formatTime(value?: string): string {
-  const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatDailyNoteDate(date: string): string {
-  const [year, month, day] = date.split("-").map((part) => parseInt(part, 10));
-  const parsedDate = new Date(year, month - 1, day);
-  const monthName = parsedDate.toLocaleString("en", { month: "long" });
-  const dayWithOrdinal = formatOrdinal(day);
-  return `${monthName} ${dayWithOrdinal}, ${year}`;
-}
-
-function formatOrdinal(day: number): string {
-  const remainder = day % 100;
-  if (remainder >= 11 && remainder <= 13) return `${day}th`;
-  switch (day % 10) {
-    case 1:
-      return `${day}st`;
-    case 2:
-      return `${day}nd`;
-    case 3:
-      return `${day}rd`;
-    default:
-      return `${day}th`;
-  }
-}
-
-function formatDistance(meters?: number | null): string | undefined {
-  if (meters == null || Number.isNaN(meters)) return undefined;
-  const km = meters / 1000;
-  return `${km.toFixed(2)} km`;
-}
-
-function formatTemperature(deviation?: number | null): string | undefined {
-  if (deviation == null || Number.isNaN(deviation)) return undefined;
-  const sign = deviation >= 0 ? "+" : "";
-  return `${sign}${deviation.toFixed(2)}°C`;
 }

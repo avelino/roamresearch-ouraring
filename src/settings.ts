@@ -1,7 +1,7 @@
 // Use React from window to avoid version conflicts with Roam's React
 const getReact = () => (window as unknown as { React: typeof import("react") }).React;
 
-import { CONFIG_PAGE_TITLE, DEFAULT_PAGE_PREFIX } from "./constants";
+import { CONFIG_PAGE_TITLE, DEFAULT_PAGE_PREFIX, MUTATION_DELAY_MS, YIELD_BATCH_SIZE } from "./constants";
 import type { ExtensionAPI } from "./main";
 
 interface RoamBasicNode {
@@ -394,5 +394,5 @@ export function yieldToMain(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-export const MUTATION_DELAY_MS = 100;
-export const YIELD_BATCH_SIZE = 3;
+// Re-export constants for backwards compatibility
+export { MUTATION_DELAY_MS, YIELD_BATCH_SIZE } from "./constants";
