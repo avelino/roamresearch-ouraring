@@ -100,6 +100,14 @@ async function createBlockRecursive(parentUid: string, node: InputTextNode, orde
   }
 }
 
+export async function updateBlock(config: { uid: string; text: string }): Promise<void> {
+  const api = getRoamAPI();
+  if (api?.updateBlock) {
+    await api.updateBlock({ block: { uid: config.uid, string: config.text } });
+    await delay(MUTATION_DELAY_MS);
+  }
+}
+
 export async function deleteBlock(uid: string): Promise<void> {
   const api = getRoamAPI();
   if (api?.deleteBlock) {

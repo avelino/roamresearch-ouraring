@@ -1,10 +1,10 @@
 import {
-  createBlock,
+  createBlock as roamCreateBlock,
+  updateBlock as roamUpdateBlock,
   createPage,
   deleteBlock,
   getBasicTreeByParentUid,
   getPageUidByPageTitle,
-  type InputTextNode,
 } from "./settings";
 import { DEFAULT_PAGE_PREFIX, ISO_DATE_PATTERN } from "./constants";
 import { logDebug, logWarn } from "./logger";
@@ -34,6 +34,123 @@ import {
   OuraWorkout,
   summarizeHeartRate,
 } from "./ouraring";
+import {
+  BlockReconciler,
+  createRoamApiAdapter,
+  type BlockPayload,
+  type RoamNode,
+} from "roam-block-reconciler";
+
+const OURA_DATE_PROPERTY = "oura-date";
+
+/**
+ * Creates a Roam API adapter for the reconciler.
+ */
+function createOuraRoamAdapter() {
+  return createRoamApiAdapter({
+    getBasicTreeByParentUid,
+    createBlock: roamCreateBlock,
+    updateBlock: roamUpdateBlock,
+    deleteBlock,
+  });
+}
+
+/**
+ * Creates a BlockReconciler configured for Oura daily data.
+ * Uses a fixed identifier since each page has only one Oura data block.
+ * This allows matching both legacy blocks (without oura-date) and new blocks.
+ */
+function createOuraReconciler() {
+  const roamApi = createOuraRoamAdapter();
+
+  return new BlockReconciler<BlockPayload>(
+    {
+      // All Oura blocks use the same ID since there's only one per page
+      extractId: (block) => {
+        // Verify it's an Oura block by checking for the header pattern or property
+        if (!isOuraHeaderBlock(block.text ?? "") && !extractOuraDateFromBlock(block)) {
+          throw new Error(`Block is not an Oura block: ${block.text.substring(0, 50)}`);
+        }
+        return OURA_BLOCK_ID;
+      },
+      buildBlock: (block) => block,
+      extractIdFromBlock: (node: RoamNode) => extractOuraIdFromNode(node),
+    },
+    roamApi
+  ).withChildrenReconciler({
+    extractKey: extractSectionKey,
+  });
+}
+
+// Fixed ID for all Oura blocks (only one per page)
+const OURA_BLOCK_ID = "oura-daily";
+
+/**
+ * Extracts oura-date from a BlockPayload.
+ * Checks main text and children for the property.
+ */
+function extractOuraDateFromBlock(block: BlockPayload): string | undefined {
+  let id = extractOuraDateProperty(block.text ?? "");
+  if (id) return id;
+
+  for (const child of block.children ?? []) {
+    id = extractOuraDateProperty(child.text ?? "");
+    if (id) return id;
+  }
+  return undefined;
+}
+
+/**
+ * Extracts oura identifier from a RoamNode.
+ * Supports both new format (oura-date:: property) and legacy format (#ouraring header).
+ * Returns a fixed ID since each page has only one Oura block.
+ */
+function extractOuraIdFromNode(node: RoamNode): string | undefined {
+  // Check for oura-date property in children (new format)
+  for (const child of node.children ?? []) {
+    const id = extractOuraDateProperty(child.text ?? "");
+    if (id) return OURA_BLOCK_ID;
+  }
+
+  // Check for #ouraring header (legacy and new format)
+  if (isOuraHeaderBlock(node.text ?? "")) {
+    return OURA_BLOCK_ID;
+  }
+
+  return undefined;
+}
+
+/**
+ * Extracts oura-date value from property text content.
+ */
+function extractOuraDateProperty(content: string): string | undefined {
+  const match = content.match(new RegExp(`^${OURA_DATE_PROPERTY}::\\s*(.+)$`, "mi"));
+  return match ? match[1].trim() : undefined;
+}
+
+/**
+ * Checks if the text is an Oura header block (starts with #ouraring).
+ */
+function isOuraHeaderBlock(text: string): boolean {
+  return text.trim().startsWith("#ouraring ");
+}
+
+/**
+ * Extracts section key from a block (e.g., "Sleep", "Readiness").
+ * Used by children reconciler to match sections.
+ */
+function extractSectionKey(text: string): string | undefined {
+  const trimmed = text.trim();
+  const sections = ["Sleep", "Readiness", "Activity", "Heart rate", "Workouts", "Tags"];
+  for (const section of sections) {
+    if (trimmed === section || trimmed.startsWith(`${section}:`)) {
+      return section;
+    }
+  }
+  // Check for property lines
+  const match = text.match(/^([\w-]+)::/);
+  return match ? match[1] : undefined;
+}
 
 export async function writeDailyOuraPage(prefix: string, data: DailyOuraData): Promise<void> {
   if (!ISO_DATE_PATTERN.test(data.date)) {
@@ -44,45 +161,31 @@ export async function writeDailyOuraPage(prefix: string, data: DailyOuraData): P
   const pageTitle = `${prefix || DEFAULT_PAGE_PREFIX}/${data.date}`;
   const header = buildHeaderText(data);
 
-  const pageUid = (getPageUidByPageTitle(pageTitle)) ?? (await createPage({
+  const existingPageUid = getPageUidByPageTitle(pageTitle);
+  const pageUid = existingPageUid ?? (await createPage({
     title: pageTitle,
-    tree: [buildHeaderNode(header, data)],
+    tree: [],
   }));
 
-  const current = getBasicTreeByParentUid(pageUid);
-  await replacePageContent(pageUid, header, data, current);
+  const block = buildDailyBlock(header, data);
+  const reconciler = createOuraReconciler();
+  const stats = await reconciler.reconcile(pageUid, [block]);
+
+  logDebug("page_written", {
+    pageUid,
+    date: data.date,
+    ...stats,
+  });
 }
 
-async function replacePageContent(
-  pageUid: string,
-  header: string,
-  data: DailyOuraData,
-  current: Array<{ uid: string }>
-): Promise<void> {
-  for (const node of current) {
-    await deleteBlock(node.uid);
-  }
+/**
+ * Builds the complete block structure for a day's Oura data.
+ */
+function buildDailyBlock(header: string, data: DailyOuraData): BlockPayload {
+  const children: BlockPayload[] = [];
 
-  const headerNode = buildHeaderNode(header, data);
-  await createBlock({ parentUid: pageUid, order: 0, node: headerNode });
-  logDebug("page_written", { pageUid, date: data.date });
-}
-
-function buildHeaderText(data: DailyOuraData): string {
-  const dateStr = formatDailyNoteDate(data.date);
-  const sleepScore = data.sleep.length > 0 ? data.sleep[0].score : undefined;
-  const readinessScore = data.readiness.length > 0 ? data.readiness[0].score : undefined;
-
-  const scoreParts: string[] = [];
-  if (sleepScore !== undefined) scoreParts.push(`sleep: ${sleepScore}`);
-  if (readinessScore !== undefined) scoreParts.push(`readiness: ${readinessScore}`);
-
-  const scoresSuffix = scoreParts.length > 0 ? ` ${scoreParts.join(" / ")}` : "";
-  return `#ouraring [[${dateStr}]]${scoresSuffix}`;
-}
-
-function buildHeaderNode(header: string, data: DailyOuraData): InputTextNode {
-  const children: InputTextNode[] = [];
+  // Add oura-date property as first child for identification
+  children.push({ text: `${OURA_DATE_PROPERTY}:: ${data.date}`, children: [] });
 
   const sleepNode = buildSleepNode(data.sleep);
   if (sleepNode) children.push(sleepNode);
@@ -108,10 +211,23 @@ function buildHeaderNode(header: string, data: DailyOuraData): InputTextNode {
   };
 }
 
-function buildSleepNode(sessions: OuraSleep[]): InputTextNode | null {
+function buildHeaderText(data: DailyOuraData): string {
+  const dateStr = formatDailyNoteDate(data.date);
+  const sleepScore = data.sleep.length > 0 ? data.sleep[0].score : undefined;
+  const readinessScore = data.readiness.length > 0 ? data.readiness[0].score : undefined;
+
+  const scoreParts: string[] = [];
+  if (sleepScore !== undefined) scoreParts.push(`sleep: ${sleepScore}`);
+  if (readinessScore !== undefined) scoreParts.push(`readiness: ${readinessScore}`);
+
+  const scoresSuffix = scoreParts.length > 0 ? ` ${scoreParts.join(" / ")}` : "";
+  return `#ouraring [[${dateStr}]]${scoresSuffix}`;
+}
+
+function buildSleepNode(sessions: OuraSleep[]): BlockPayload | null {
   if (sessions.length === 0) return null;
   const primary = sessions[0];
-  const rows: InputTextNode[] = [];
+  const rows: BlockPayload[] = [];
 
   // Main score and timing
   pushIfValue(rows, "Score", formatNumber(primary.score));
@@ -137,7 +253,7 @@ function buildSleepNode(sessions: OuraSleep[]): InputTextNode | null {
   // Contributors (if available)
   if (primary.contributors) {
     const c = primary.contributors;
-    const contributorsNode: InputTextNode = { text: "Contributors", children: [] };
+    const contributorsNode: BlockPayload = { text: "Contributors", children: [] };
     pushIfValue(contributorsNode.children!, "Deep sleep", formatNumber(c.deep_sleep));
     pushIfValue(contributorsNode.children!, "Efficiency", formatNumber(c.efficiency));
     pushIfValue(contributorsNode.children!, "Latency", formatNumber(c.latency));
@@ -153,10 +269,10 @@ function buildSleepNode(sessions: OuraSleep[]): InputTextNode | null {
   return rows.length > 0 ? { text: "Sleep", children: rows } : null;
 }
 
-function buildReadinessNode(entries: OuraReadiness[]): InputTextNode | null {
+function buildReadinessNode(entries: OuraReadiness[]): BlockPayload | null {
   if (entries.length === 0) return null;
   const primary = entries[0];
-  const rows: InputTextNode[] = [];
+  const rows: BlockPayload[] = [];
 
   // Main score
   pushIfValue(rows, "Score", formatNumber(primary.score));
@@ -176,7 +292,7 @@ function buildReadinessNode(entries: OuraReadiness[]): InputTextNode | null {
   // Contributors (if available)
   if (primary.contributors) {
     const c = primary.contributors;
-    const contributorsNode: InputTextNode = { text: "Contributors", children: [] };
+    const contributorsNode: BlockPayload = { text: "Contributors", children: [] };
     pushIfValue(contributorsNode.children!, "Activity balance", formatNumber(c.activity_balance));
     pushIfValue(contributorsNode.children!, "Body temperature", formatNumber(c.body_temperature));
     pushIfValue(contributorsNode.children!, "HRV balance", formatNumber(c.hrv_balance));
@@ -193,10 +309,10 @@ function buildReadinessNode(entries: OuraReadiness[]): InputTextNode | null {
   return rows.length > 0 ? { text: "Readiness", children: rows } : null;
 }
 
-function buildActivityNode(entries: OuraActivity[]): InputTextNode | null {
+function buildActivityNode(entries: OuraActivity[]): BlockPayload | null {
   if (entries.length === 0) return null;
   const primary = entries[0];
-  const rows: InputTextNode[] = [];
+  const rows: BlockPayload[] = [];
 
   // Main score
   pushIfValue(rows, "Score", formatNumber(primary.score));
@@ -232,7 +348,7 @@ function buildActivityNode(entries: OuraActivity[]): InputTextNode | null {
   return rows.length > 0 ? { text: "Activity", children: rows } : null;
 }
 
-function buildHeartRateNode(samples: OuraHeartRateSample[]): InputTextNode | null {
+function buildHeartRateNode(samples: OuraHeartRateSample[]): BlockPayload | null {
   const summary = summarizeHeartRate(samples);
   if (!summary.average && !summary.min && !summary.max) {
     return null;
@@ -244,25 +360,27 @@ function buildHeartRateNode(samples: OuraHeartRateSample[]): InputTextNode | nul
   return { text: "Heart rate", children: [{ text: parts.join(" / ") }] };
 }
 
-function buildWorkoutsNode(workouts: OuraWorkout[]): InputTextNode | null {
+function buildWorkoutsNode(workouts: OuraWorkout[]): BlockPayload | null {
   if (workouts.length === 0) return null;
   const rows = workouts.map((workout) => ({
     text: formatWorkoutLine(workout),
+    children: [] as BlockPayload[],
   }));
   return { text: "Workouts", children: rows };
 }
 
-function buildTagsNode(tags: OuraTag[]): InputTextNode | null {
+function buildTagsNode(tags: OuraTag[]): BlockPayload | null {
   if (tags.length === 0) return null;
   const rows = tags.map((tag) => ({
     text: formatTagLine(tag),
+    children: [] as BlockPayload[],
   }));
   return { text: "Tags", children: rows };
 }
 
-function pushIfValue(collection: InputTextNode[], label: string, value?: string): void {
+function pushIfValue(collection: BlockPayload[], label: string, value?: string): void {
   if (value) {
-    collection.push({ text: `${label}: ${value}` });
+    collection.push({ text: `${label}: ${value}`, children: [] });
   }
 }
 

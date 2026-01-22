@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      roam-block-reconciler:
+        specifier: file:../roam-block-reconciler
+        version: file:../roam-block-reconciler
     devDependencies:
       '@eslint/js':
         specifier: 9.37.0
@@ -1632,6 +1636,10 @@ packages:
   reusify@1.1.0:
     resolution: {integrity: sha512-g6QUff04oZpHs0eG5p83rFLhHeV00ug/Yf9nZM6fLeUrPguBTkTQOdpAWWspMh55TZfVQDPaN3NQJfbVRAxdIw==}
     engines: {iojs: '>=1.0.0', node: '>=0.10.0'}
+
+  roam-block-reconciler@file:../roam-block-reconciler:
+    resolution: {directory: ../roam-block-reconciler, type: directory}
+    engines: {node: '>=18'}
 
   rollup@4.52.5:
     resolution: {integrity: sha512-3GuObel8h7Kqdjt0gxkEzaifHTqLVW56Y/bjN7PSQtkKr0w3V/QYSdt6QWYtd7A1xUtYQigtdUfgj1RvWVtorw==}
@@ -3427,6 +3435,8 @@ snapshots:
   resolve-from@5.0.0: {}
 
   reusify@1.1.0: {}
+
+  roam-block-reconciler@file:../roam-block-reconciler: {}
 
   rollup@4.52.5:
     dependencies:
