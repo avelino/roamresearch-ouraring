@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       roam-block-reconciler:
-        specifier: file:../roam-block-reconciler
-        version: file:../roam-block-reconciler
+        specifier: github:avelino/roam-block-reconciler
+        version: https://codeload.github.com/avelino/roam-block-reconciler/tar.gz/834071f26acbeb0ff413c62f43258989919d68cb
     devDependencies:
       '@eslint/js':
         specifier: 9.37.0
@@ -1637,8 +1637,9 @@ packages:
     resolution: {integrity: sha512-g6QUff04oZpHs0eG5p83rFLhHeV00ug/Yf9nZM6fLeUrPguBTkTQOdpAWWspMh55TZfVQDPaN3NQJfbVRAxdIw==}
     engines: {iojs: '>=1.0.0', node: '>=0.10.0'}
 
-  roam-block-reconciler@file:../roam-block-reconciler:
-    resolution: {directory: ../roam-block-reconciler, type: directory}
+  roam-block-reconciler@https://codeload.github.com/avelino/roam-block-reconciler/tar.gz/834071f26acbeb0ff413c62f43258989919d68cb:
+    resolution: {tarball: https://codeload.github.com/avelino/roam-block-reconciler/tar.gz/834071f26acbeb0ff413c62f43258989919d68cb}
+    version: 1.0.0
     engines: {node: '>=18'}
 
   rollup@4.52.5:
@@ -3436,7 +3437,7 @@ snapshots:
 
   reusify@1.1.0: {}
 
-  roam-block-reconciler@file:../roam-block-reconciler: {}
+  roam-block-reconciler@https://codeload.github.com/avelino/roam-block-reconciler/tar.gz/834071f26acbeb0ff413c62f43258989919d68cb: {}
 
   rollup@4.52.5:
     dependencies:
