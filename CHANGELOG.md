@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/avelino/roamresearch-ouraring/compare/v1.2.0...v1.2.1) (2026-01-22)
+
+
+### Bug Fixes
+
+* update roam-block-reconciler to version with dist folder ([ddd8ace](https://github.com/avelino/roamresearch-ouraring/commit/ddd8ace187595bc5477dd0690819a169dca1ffce))
+
 # [1.2.0](https://github.com/avelino/roamresearch-ouraring/compare/v1.1.0...v1.2.0) (2025-12-13)
 
 
